@@ -79,6 +79,10 @@ class NodeTable (α : Type) where
   key : String
   columns : Array Column
 
+/-- The primary key of a node table and its Lean type. -/
+class NodeKey (α : Type) (κ : outParam Type) where
+  keyOf : α → κ
+
 /-- A Lean structure stored as a relationship table from `src` to `dst` nodes. -/
 class RelTable (ρ : Type) (src dst : outParam Type) where
   label : String

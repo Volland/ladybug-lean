@@ -119,3 +119,11 @@ Keyword operators must therefore list `ident` among their first tokens.
 source:: Lean v4.35 `Lean.Parser.indexed` and `trailingLoop`
 
 - constrains:: [[decisions#Cypher keywords parsed as non-reserved symbols]] {strength: must}
+
+## List parameters need one element type
+
+Every element of a Ladybug list value must have the same type, so a batch whose rows mix empty and non-empty lists, or NULL and typed values, is rejected unless the empty lists and NULLs are given a sibling's type.
+
+source:: Ladybug C API `lbug_value_create_list`; observed with UNWIND batches in 0.22.1
+
+- constrains:: [[decisions#Repository not Hibernate]] {strength: must, note: "batches are harmonized before binding"}

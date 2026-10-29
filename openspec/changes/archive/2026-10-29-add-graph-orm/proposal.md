@@ -21,7 +21,7 @@ None.
 
 ## Impact
 
-- New modules: `Ladybug/ORM.lean`, `Ladybug/ORM/Bulk.lean`.
+- New module: `Ladybug/ORM.lean`; native file import in `LadybugNative/Graph.lean`.
 - Depends on [[openspec:cypher-query#Query builder]] and [[openspec:graph-monad#Backend-independent execution]].
 - Bound by [[decisions#Repository not Hibernate]].
 - Requirements added: [[openspec:graph-orm#Node CRUD]], [[openspec:graph-orm#Relationship links]], [[openspec:graph-orm#Traversal helpers]], [[openspec:graph-orm#Batched insert]], [[openspec:graph-orm#File import]].

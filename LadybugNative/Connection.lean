@@ -87,10 +87,14 @@ private def missingParam? (msg : String) : Option String :=
     | _ => none
   | _ => none
 
+private def contains (s pat : String) : Bool := (s.splitOn pat).length > 1
+
 private def queryError (msg : String) : Error :=
   match missingParam? msg with
   | some p => .bind p msg
-  | none => .query msg
+  | none =>
+    if contains msg "duplicated primary key" || contains msg "has connected edges" then .constraint msg
+    else .query msg
 
 private partial def drain (r : FFI.Result) : LbugIO ResultSet := do
   let columns ← FFI.resultColumns r
@@ -141,11 +145,37 @@ partial def toNative : Value → Except String FFI.NValue
   | .timestampTz t => .ok (FFI.nvTimestampTz t)
   | .interval m d u => .ok (FFI.nvInterval m d u)
   | .internalId i => .ok (FFI.nvInternalId i.table i.offset)
-  | .list xs | .array xs => do FFI.nvList (← xs.mapM toNative)
+  | .list xs | .array xs => do FFI.nvList (← listElems xs)
   | .struct fs => do FFI.nvStruct (fs.map (·.1)) (← fs.mapM (toNative ·.2))
   | .map es => do FFI.nvMap (← es.mapM (toNative ·.1)) (← es.mapM (toNative ·.2))
   | .union _ v => toNative v
   | v => .error s!"a {v.kind} value cannot be a query parameter"
+where
+  /-- Native list elements, with NULLs and empty lists given the type of a
+  sibling, since every element of a Ladybug list must have one type. -/
+  listElems (xs : Array Value) : Except String (Array FFI.NValue) := do
+    let isEmptyOrNull : Value → Bool := fun | .null | .list #[] => true | _ => false
+    let fix (v : Value) (template : Option FFI.NValue) : Except String FFI.NValue :=
+      match v, template with
+      | .null, some t => .ok (FFI.nvNullLike t)
+      | .list #[], some t => .ok (FFI.nvEmptyLike t)
+      | v, _ => toNative v
+    let structs := xs.filterMap fun | .struct fs => some fs | _ => none
+    if structs.size == xs.size && xs.size > 1 then
+      let names := structs[0]!.map (·.1)
+      let templates ← names.mapM fun n => do
+        match structs.findSome? fun fs => (fs.find? (·.1 == n)).bind fun (_, v) =>
+            if isEmptyOrNull v then none else some v with
+        | some v => return some (← toNative v)
+        | none => return none
+      structs.mapM fun fs => do
+        let vals ← fs.mapIdxM fun i (_, v) => fix v (templates[i]?.join)
+        FFI.nvStruct (fs.map (·.1)) vals
+    else
+      let template ← match xs.find? (!isEmptyOrNull ·) with
+        | some v => some <$> toNative v
+        | none => pure none
+      xs.mapM (fix · template)
 
 /-- Named query parameters. -/
 abbrev Params := Array (String × Value)

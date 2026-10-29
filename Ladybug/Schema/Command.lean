@@ -130,6 +130,7 @@ def declareNodeTable (declName : Name) (key? : Option Name) (label? : Option Str
     columns := $(← columnsTerm fields)))
   elabCommand (← `(instance : Ladybug.NodeVarOf $varId $S := ⟨(·.cypherVar)⟩))
   elabCommand (← `(instance : Ladybug.OptNodeVarOf $optId $S := ⟨(·.cypherVar)⟩))
+  elabCommand (← `(instance : Ladybug.NodeKey $S $(keyField.typeStx) := ⟨$(mkIdent (declName ++ key))⟩))
   let entry : Registry.TableEntry :=
     { label := label, declName := declName, isRel := false, columns := registryColumns fields }
   liftCoreM <| Registry.register entry

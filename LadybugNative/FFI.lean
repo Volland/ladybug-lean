@@ -91,6 +91,10 @@ opaque resultNextResult (r : @& Result) : IO (Option (Except String Result))
 @[extern "lbug_lean_nv_timestamp_tz"] opaque nvTimestampTz : Int64 → NValue
 @[extern "lbug_lean_nv_interval"] opaque nvInterval (months days : Int32) (micros : Int64) : NValue
 @[extern "lbug_lean_nv_internal_id"] opaque nvInternalId (table offset : UInt64) : NValue
+/-- A NULL of the template's type. -/
+@[extern "lbug_lean_nv_null_like"] opaque nvNullLike : @& NValue → NValue
+/-- The default value of the template's type: an empty list for a list type. -/
+@[extern "lbug_lean_nv_empty_like"] opaque nvEmptyLike : @& NValue → NValue
 @[extern "lbug_lean_nv_list"] opaque nvList : @& Array NValue → Except String NValue
 @[extern "lbug_lean_nv_struct"]
 opaque nvStruct (names : @& Array String) (vals : @& Array NValue) : Except String NValue

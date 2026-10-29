@@ -18,7 +18,7 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 | Schema | `Ladybug.Schema`, `Ladybug.Schema.Command` | `Ladybug` | M2 |
 | Typed Cypher | `Ladybug.Cypher.*` | `Ladybug` | M2, M3, M5 |
 | Graph monad | `Ladybug.Graph`, `LadybugNative.Graph` | both | M2 |
-| ORM | `Ladybug.ORM`, `Ladybug.ORM.Bulk` | `Ladybug` | M4 |
+| ORM | `Ladybug.ORM` (`Repo.*`), `Repo.copyNodes`/`copyRels` in `LadybugNative.Graph` | both | M4 |
 | Search | `Ladybug.Search` | `Ladybug` | M5 |
 | Memory backend | `Ladybug.Mem.*` | `Ladybug` | M6 |
 
@@ -50,6 +50,14 @@ Labels and properties are checked against the table registry that `node_table`/`
 
 - defines:: [[decisions#Cypher keywords parsed as non-reserved symbols]]
 - defines:: [[decisions#A query ends where its indentation does]]
+
+## Repository
+
+The `Repo` functions are generic over `MonadGraph` and the table classes, so they run on every backend.
+
+They are `insert`, `upsert`, `get?`, `findAll`, `findWhere`, `update`, `delete`, `detachDelete`, `link`, `between`, `unlink`, `outgoing`, `incoming`, and the batched `insertMany`, `upsertMany` and `linkMany`.
+
+- defines:: [[decisions#Repository not Hibernate]]
 
 ## Pure core
 

@@ -86,6 +86,22 @@ def lbugVerifySchema (s : Schema) : LbugM (Array SchemaDiff) := do
           diffs := diffs.push (.endpointMismatch label expected (", ".intercalate actual.toList))
   return diffs
 
+private def copyInto (label path : String) : LbugM Unit := do
+  if path.contains '\'' then throw (.custom s!"COPY paths cannot contain a quote: {path}")
+  let opts := if path.endsWith ".csv" then " (header=true)" else ""
+  exec s!"COPY {Cypher.quoteIdent label} FROM {strLit path}{opts}"
+
+-- @tg: implements:: [[openspec:graph-orm#File import]]
+/-- Load a node table from a CSV file with a header row, or a Parquet file,
+whose columns are the table's. COPY takes no parameters, so the path is quoted
+into the text and must not contain a quote. -/
+def Repo.copyNodes (α : Type) [NodeTable α] (path : String) : LbugM Unit := copyInto (NodeTable.label α) path
+
+/-- Load a relationship table from a CSV or Parquet file whose first two columns
+are the source and destination keys. -/
+def Repo.copyRels (ρ : Type) {σ τ : Type} [RelTable ρ σ τ] (path : String) : LbugM Unit :=
+  copyInto (RelTable.label ρ) path
+
 -- @tg: implements:: [[openspec:graph-monad#Native backend]]
 instance : MonadGraph LbugM where
   runQuery q := do decodeRows q.decode (← runCore q.core)

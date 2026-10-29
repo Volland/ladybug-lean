@@ -669,6 +669,25 @@ LEAN_EXPORT lean_obj_res lbug_lean_nv_internal_id(uint64_t table, uint64_t offse
     return wrap_value(lbug_value_create_internal_id(i));
 }
 
+// A value of the template's type: NULL, or the type's default (an empty list
+// for a list type). Used so that every element of a list parameter has the
+// same type when some elements are NULL or empty.
+LEAN_EXPORT lean_obj_res lbug_lean_nv_null_like(b_lean_obj_arg tmpl) {
+    lbug_logical_type t;
+    lbug_value_get_data_type(as_value(tmpl)->val, &t);
+    lbug_value* v = lbug_value_create_null_with_data_type(&t);
+    lbug_data_type_destroy(&t);
+    return wrap_value(v);
+}
+
+LEAN_EXPORT lean_obj_res lbug_lean_nv_empty_like(b_lean_obj_arg tmpl) {
+    lbug_logical_type t;
+    lbug_value_get_data_type(as_value(tmpl)->val, &t);
+    lbug_value* v = lbug_value_create_default(&t);
+    lbug_data_type_destroy(&t);
+    return wrap_value(v);
+}
+
 static lbug_value** native_values(b_lean_obj_arg arr, size_t* n) {
     *n = lean_array_size(arr);
     lbug_value** xs = malloc(sizeof(lbug_value*) * (*n > 0 ? *n : 1));

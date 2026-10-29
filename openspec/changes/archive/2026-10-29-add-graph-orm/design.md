@@ -13,13 +13,13 @@ M2 provides table metadata classes (`NodeTable`, `RelTable`), value encoding to 
 ## Decisions
 
 ### Generic functions, not generated code
-`insert [NodeTable α] (x : α) : m Unit` builds `CREATE (n:L $props)` from `NodeTable.label` and the `ToValue` struct of `x`. `get? (key : NodeTable.Key α)` matches on the key column. Alternative rejected: generating `Person.insert` and similar functions in the `node_table` command, which multiplies generated code and hides the logic from the reader.
+All operations live in the `Ladybug.Repo` namespace. `Repo.insert [NodeTable α] (x : α) : m Unit` builds `CREATE (n:L {…})` from `NodeTable.label` and the `ToValue` struct of `x`. `Repo.get? α (k : κ)` matches on the key column, where `node_table` generates `NodeKey α κ` naming the key's Lean type, so keys are typed. The functions build core clauses directly, so they need only the table classes, not the builder's companion classes. Alternative rejected: generating `Person.insert` and similar functions in the `node_table` command, which multiplies generated code and hides the logic from the reader.
 
 ### Not-found and constraint errors
 `update` and `link` use `MATCH … SET … RETURN count(*)` and raise `.notFound` when the count is 0. Duplicate keys surface as Ladybug errors, which the native backend maps to `.constraint` by recognising Ladybug's primary-key violation message. The in-memory backend raises `.constraint` itself.
 
 ### Batches through UNWIND
-`insertMany` sends `UNWIND $rows AS row CREATE (n:L) SET n = row`, or the per-column form if Ladybug lacks map assignment, with `rows` as a list-of-struct parameter. Batching bounds the parameter size. File import prints `COPY L FROM '<path>'` with the path as a string literal, the one place literal text is printed, because COPY does not accept parameters. The path is escaped, and is rejected if it contains a quote.
+`insertMany` sends `UNWIND $rows AS row CREATE (n:L {c₁: row.c₁, …})` with `rows` as a list-of-struct parameter. Ladybug requires every list element to have one type, so the native backend gives empty lists and NULLs in a batch the type of a sibling value in the same field ([[constraints#List parameters need one element type]]). Batching bounds the parameter size. File import prints `COPY L FROM '<path>'` with the path as a string literal, the one place literal text is printed, because COPY does not accept parameters. The path is escaped, and is rejected if it contains a quote.
 
 ## Risks / Trade-offs
 
