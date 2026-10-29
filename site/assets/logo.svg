@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">ladybug-lean</title>
+  <desc id="desc">A ladybug seen from above. The split between its wing cases is the type turnstile ⊢, and its spots are the nodes of a small graph.</desc>
+  <!-- a light halo under the dark parts, so the mark reads on dark backgrounds -->
+  <g stroke="#f4e7e9" stroke-width="7.5" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M30 56 L16 48"/><path d="M27 74 L12 74"/><path d="M31 92 L18 102"/>
+    <path d="M98 56 L112 48"/><path d="M101 74 L116 74"/><path d="M97 92 L110 102"/>
+    <path d="M56 22 Q50 10 42 8"/><path d="M72 22 Q78 10 86 8"/>
+  </g>
+  <circle cx="64" cy="31" r="17" fill="#f4e7e9" opacity="0.9"/>
+  <ellipse cx="64" cy="76" rx="40" ry="42" fill="#f4e7e9" opacity="0.9"/>
+  <g stroke="#1b1b2f" stroke-width="4" stroke-linecap="round" fill="none">
+    <!-- legs -->
+    <path d="M30 56 L16 48"/><path d="M27 74 L12 74"/><path d="M31 92 L18 102"/>
+    <path d="M98 56 L112 48"/><path d="M101 74 L116 74"/><path d="M97 92 L110 102"/>
+    <!-- antennae -->
+    <path d="M56 22 Q50 10 42 8"/><path d="M72 22 Q78 10 86 8"/>
+  </g>
+  <!-- head -->
+  <circle cx="64" cy="31" r="15" fill="#1b1b2f"/>
+  <circle cx="57.5" cy="28" r="3" fill="#ffffff"/>
+  <circle cx="70.5" cy="28" r="3" fill="#ffffff"/>
+  <!-- shell -->
+  <ellipse cx="64" cy="76" rx="38" ry="40" fill="#d7263d"/>
+  <ellipse cx="64" cy="76" rx="38" ry="40" fill="none" stroke="#1b1b2f" stroke-width="3"/>
+  <!-- edges between the spots -->
+  <g stroke="#1b1b2f" stroke-width="2.4" stroke-linecap="round" opacity="0.85">
+    <path d="M44 60 L42 88"/><path d="M44 60 L64 104"/><path d="M42 88 L64 104"/>
+    <path d="M84 92 L64 104"/>
+  </g>
+  <!-- the turnstile ⊢: the split of the wing cases and a bar to the right -->
+  <g stroke="#1b1b2f" stroke-width="4.5" stroke-linecap="round">
+    <path d="M64 40 L64 114"/>
+    <path d="M64 74 L96 74"/>
+  </g>
+  <!-- spots: graph nodes -->
+  <g fill="#1b1b2f">
+    <circle cx="44" cy="60" r="7"/>
+    <circle cx="42" cy="88" r="6"/>
+    <circle cx="64" cy="104" r="5.5"/>
+    <circle cx="84" cy="56" r="6.5"/>
+    <circle cx="84" cy="92" r="6"/>
+  </g>
+</svg>

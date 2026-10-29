@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini book · ladybug-lean</title>
+  <meta name="description" content="The main ideas of LadybugDB and of typed property graphs in Lean, in eight short chapters.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt=""><span>ladybug<span class="colon"> : </span><span class="full">Lean</span></span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="guide.html">Guide</a>
+      <a href="book.html" aria-current="page">Mini book</a>
+      <a href="examples.html">Example</a>
+      <a href="https://github.com/Volland/ladybug-lean">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<main class="doc">
+  <nav class="toc" aria-label="Chapters">
+    <p class="label">Mini book</p>
+    <ol>
+      <li><a href="#graphs">1. Graphs that remember</a></li>
+      <li><a href="#ladybug">2. LadybugDB</a></li>
+      <li><a href="#ontology">3. The schema is the ontology</a></li>
+      <li><a href="#types">4. The ontology in the type checker</a></li>
+      <li><a href="#unknown">5. Unknown is a value</a></li>
+      <li><a href="#queries">6. Queries are values</a></li>
+      <li><a href="#verified">7. What "checked" means here</a></li>
+      <li><a href="#memory">8. Memory for agents</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <h1>The mini book</h1>
+    <p class="lede">The main ideas behind LadybugDB and behind using it from Lean with types, in eight short chapters. Each ends with where to read more in <a href="https://leanpub.com/ladybugdb"><em>LadybugDB for Edge Agent AI Memory</em></a>.</p>
+
+    <section id="graphs">
+      <h2><span class="chapter-num">1</span>Graphs that remember</h2>
+      <p>A <strong>labeled property graph</strong> stores things as <em>nodes</em> and the ways they relate as <em>relationships</em>. Both carry a label (a type) and properties (typed fields). A relationship has a direction and joins exactly two nodes, so the connection itself can be described, queried and timestamped like anything else.</p>
+      <svg class="diagram" viewBox="0 0 720 200" role="img" aria-label="Two Person nodes, Ann and Bob, a Company node ACME, a WorksAt relationship from Ann to ACME with since 2020, and a Knows relationship from Bob to Ann">
+        <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+        <g style="color: var(--muted)">
+          <path class="edge" d="M210 70 L470 70" marker-end="url(#arrow)"/>
+          <path class="edge" d="M150 160 L150 105" marker-end="url(#arrow)"/>
+        </g>
+        <rect class="node" x="70" y="35" width="160" height="70" rx="12"/>
+        <text x="86" y="60" font-weight="700">:Person</text>
+        <text x="86" y="80">id: 1, name: "Ann"</text>
+        <text x="86" y="97">age: 41</text>
+        <rect class="node" x="480" y="35" width="170" height="70" rx="12"/>
+        <text x="496" y="60" font-weight="700">:Company</text>
+        <text x="496" y="80">name: "ACME"</text>
+        <text class="lbl" x="290" y="60">:WorksAt { since: 2020 }</text>
+        <rect class="node" x="70" y="160" width="215" height="34" rx="12"/>
+        <text x="86" y="182"><tspan font-weight="700">:Person</tspan> "Bob", age NULL</text>
+        <text class="lbl" x="160" y="138">:Knows</text>
+      </svg>
+      <p>Compared with RDF triples, a property graph keeps the facts about an entity together with it and lets relationships carry their own data, which is why it suits application memory: one hop answers "who works at ACME since when".</p>
+      <p class="muted">Read more: <em>The Property Graph Model</em> and <em>An Introduction to Knowledge Graphs</em>.</p>
+    </section>
+
+    <section id="ladybug">
+      <h2><span class="chapter-num">2</span>LadybugDB: a graph database inside your program</h2>
+      <p>LadybugDB is an <strong>embedded</strong> property graph database built on the Kùzu engine. There is no server: you open a file (or <code>:memory:</code>) and you have a database that persists when the process ends. It speaks <strong>Cypher</strong>, enforces a typed schema, runs ACID transactions, and has extensions for vector search, full-text search, graph algorithms and relational sources. It is MIT licensed.</p>
+      <p>Embedded matters for agents and edge devices: the memory lives next to the code that uses it, works offline, and never leaves the machine. ladybug-lean talks to LadybugDB through its C API, which it loads at runtime, and copies every result into Lean values, so nothing in Lean ever points into native memory.</p>
+<pre data-label="Cypher" data-nocopy><code class="cypher">MATCH (p:Person)-[w:WorksAt]->(c:Company)
+WHERE w.since >= 2020
+RETURN p.name, c.name</code></pre>
+      <p class="muted">Read more: <em>Getting Started with LadybugDB</em>, <em>Why an Embedded Graph Database Matters for AI Memory</em> and <em>Cypher: The Graph Query Language</em>.</p>
+    </section>
+
+    <section id="ontology">
+      <h2><span class="chapter-num">3</span>The schema is the ontology</h2>
+      <p>An ontology says what kinds of things exist and how they may relate. In most systems it lives apart from the database and drifts. In LadybugDB the <code>CREATE NODE TABLE</code> and <code>CREATE REL TABLE</code> statements <em>are</em> the ontology, and the database enforces them when you write: a <code>WorksAt</code> declared from <code>Person</code> to <code>Company</code> cannot join two companies.</p>
+<pre data-label="Cypher" data-nocopy><code class="cypher">CREATE NODE TABLE Person(id INT64, name STRING, age INT64, PRIMARY KEY(id));
+CREATE NODE TABLE Company(name STRING, PRIMARY KEY(name));
+CREATE REL TABLE WorksAt(FROM Person TO Company, since INT64);</code></pre>
+      <p class="muted">Read more: <em>Typed Graphs and Ontologies</em>, including polymorphic relations, and <em>Subgraphs: Partitioning Knowledge</em>.</p>
+    </section>
+
+    <section id="types">
+      <h2><span class="chapter-num">4</span>The ontology in the type checker</h2>
+      <p>The database checks the ontology when you <em>write</em>. A query that reads a property that does not exist, compares a string with a number, or walks a relationship backwards is still accepted by your program; it fails, or quietly returns nothing, when it runs. ladybug-lean moves the ontology into Lean's type checker, so those mistakes are found when you <em>compile</em>.</p>
+      <svg class="diagram" viewBox="0 0 720 150" role="img" aria-label="Three stages: compile time, write time and read time, with what is checked at each">
+        <rect class="hl" x="10" y="20" width="220" height="110" rx="12"/>
+        <text x="26" y="46" font-weight="700">Compile time (Lean)</text>
+        <text x="26" y="70">labels and properties exist</text>
+        <text x="26" y="90">types and NULLs line up</text>
+        <text x="26" y="110">patterns follow the schema</text>
+        <rect class="box" x="250" y="20" width="220" height="110" rx="12"/>
+        <text x="266" y="46" font-weight="700">Write time (LadybugDB)</text>
+        <text x="266" y="70">column types, primary keys</text>
+        <text x="266" y="90">relationship endpoints</text>
+        <text x="266" y="110">transactions</text>
+        <rect class="box" x="490" y="20" width="220" height="110" rx="12"/>
+        <text x="506" y="46" font-weight="700">Read time (decoding)</text>
+        <text x="506" y="70">each column decodes to</text>
+        <text x="506" y="90">the declared Lean type, or a</text>
+        <text x="506" y="110">.decode error naming it</text>
+      </svg>
+      <p>The tables are Lean structures, and the schema is generated from them, not written twice:</p>
+<pre data-label="Lean"><code>structure Person where
+  id   : Int64
+  name : String
+  age  : Option Int64
+
+node_table Person
+-- Person.Var  : the query variable; p.name : Expr String, p.age : Expr (Option Int64)
+-- ddl Person  = "CREATE NODE TABLE IF NOT EXISTS Person(id INT64, name STRING, age INT64, PRIMARY KEY(id))"</code></pre>
+      <p>Relationship patterns are checked by instance search: <code>out p WorksAt (node Company)</code> type-checks only because <code>rel_table WorksAt (from := Person) (to := Company)</code> said so. <code>verifySchema</code> closes the loop at runtime, reporting any difference between your declarations and the tables in a database file.</p>
+    </section>
+
+    <section id="unknown">
+      <h2><span class="chapter-num">5</span>Unknown is a value</h2>
+      <p>Cypher has three truth values: true, false and <em>unknown</em>, which is what you get when you compare with NULL. <code>NULL &gt; 30</code> is unknown, <code>unknown OR true</code> is true, and WHERE keeps only true rows. Most query libraries pretend this away, and NULLs then surface as surprises when rows are decoded.</p>
+      <p>ladybug-lean puts it in the types. A nullable property is an <code>Expr (Option τ)</code>; a comparison is an <code>Expr (Option Bool)</code>, with <code>none</code> as unknown; OPTIONAL MATCH makes every property it binds nullable; and the row type of a query tells you exactly which columns can be NULL.</p>
+<pre data-label="Lean"><code>def withEmployer : Query (String × Option String) := query do
+  let p ← match_ (node Person)
+  let (_, c) ← optMatch (out p WorksAt (node Company))
+  return_ (p.name, c.name)            -- c.name : Expr (Option String)</code></pre>
+    </section>
+
+    <section id="queries">
+      <h2><span class="chapter-num">6</span>Queries are values</h2>
+      <p>A query is an ordinary Lean value: a small AST of clauses whose typed wrappers carry the result type. You can write it two ways, a monadic builder or Cypher text in <code>cypher%</code>, and both produce the same AST, so they print and run identically.</p>
+<pre data-label="Lean"><code>def viaBuilder : Query (String × String) := query do
+  let p ← match_ (node Person)
+  let (_, c) ← match_ (out p WorksAt (node Company))
+  return_ (p.name, c.name)
+
+def viaCypher := cypher% MATCH (p:Person)-[:WorksAt]->(c:Company) RETURN p.name, c.name
+
+#guard viaBuilder.print == viaCypher.print</code></pre>
+      <p>Because a query is data, it is printed to Cypher text by one function, and every Lean value in it becomes a parameter (<code>$p0</code>, <code>$p1</code>, …). A string such as <code>"x'}) DETACH DELETE n //"</code> is data, never part of the query, so injection is impossible by construction. The same AST is what the in-memory backend interprets.</p>
+    </section>
+
+    <section id="verified">
+      <h2><span class="chapter-num">7</span>What "checked" means here</h2>
+      <p>It is worth being precise. ladybug-lean does not prove theorems about Cypher's semantics. What it gives you is layers of checking, each mechanical:</p>
+      <table>
+        <tr><th>Layer</th><th>What it guarantees</th></tr>
+        <tr><td>The type checker</td><td>Every query fits the declared schema: labels, properties, types, nullability, relationship endpoints, result types. Literals are parameters.</td></tr>
+        <tr><td><code>#guard</code> and <code>#guard_msgs</code></td><td>Behaviour you pin in a file is re-checked every time it compiles, on the pure in-memory backend: results of your memory functions, and the errors for queries that must be rejected.</td></tr>
+        <tr><td>Two backends</td><td>The same program runs on LadybugDB and on a pure Lean interpreter of the query AST, so business logic can be tested without a database.</td></tr>
+        <tr><td>Differential testing</td><td>Thousands of generated graphs and queries run on both backends and must agree; a disagreement is shrunk to a minimal counterexample. It found real semantic details: undirected self-loops match twice, shortest paths never return to their start.</td></tr>
+        <tr><td>Property tests</td><td>Generated values of every column type, NULLs, empty and non-ASCII strings, infinities and negative zero included, survive a write and a read bit for bit.</td></tr>
+      </table>
+<pre data-label="Lean"><code>-- pinned in a source file, checked on every build, no database needed
+#guard (do applySchema schema; Repo.insert (Person.mk 1 "Ann" none);
+           Repo.findAll Person : MemM _).run'.toOption.map (·.size) == some 1</code></pre>
+      <div class="callout"><strong>Where this could go.</strong> Because queries are values and the in-memory backend is a Lean function, stating and proving properties of specific queries is within reach; the library is built so that a formal layer can be added later without changing its API.</div>
+    </section>
+
+    <section id="memory">
+      <h2><span class="chapter-num">8</span>Memory for agents</h2>
+      <p>An agent's memory is more than a vector store. It needs <em>what</em> was observed (memories with text and embeddings), <em>about whom</em> (entities and how they relate), and <em>when</em> (a timeline). A property graph holds all three, and LadybugDB answers questions that cross them in one query: the memories most similar to a thought that also mention someone the agent knows.</p>
+<pre data-label="Lean"><code>-- the five memories closest to a thought, if they mention Ann
+let hits ← runQueryM do
+  let (mem, dist) ← vectorSearch Memory "memory_vec" thought 20
+  where_ (← exists_ do
+    let (_, e) ← match_ (out mem Mentions (node Entity))
+    where_ (e.name ==. lit "Ann"))
+  orderBy dist
+  limit 5
+  return_ (mem.text, dist)</code></pre>
+      <p>The <a href="examples.html">example project</a> builds a small version of this memory: entities, memories with embeddings, mentions, a timeline, and recall by similarity, by entity and by path.</p>
+      <div class="callout">
+        <strong>Go deeper.</strong> <a href="https://leanpub.com/ladybugdb"><em>LadybugDB for Edge Agent AI Memory</em></a> develops these ideas fully: hypergraphs and metagraphs for relationships about relationships, semantic spacetime for meaning and time, a complete agentic memory ontology with entity hierarchies, typed edges, a time tree and vector indexes, and how to import from relational databases and run graph algorithms over memory.
+      </div>
+      <p class="muted">Read more: <em>From Triples to Metagraphs</em>, <em>Semantic Spacetime</em>, <em>Vector Indexes</em>, <em>Designing Agentic Memory</em> and <em>Ladybug Memory: A Working AI Memory System</em>.</p>
+    </section>
+  </article>
+</main>
+
+<footer>
+  <div class="inner">
+    <span>ladybug-lean · MIT licensed</span>
+    <span><a href="https://github.com/Volland/ladybug-lean">GitHub</a> · <a href="https://leanpub.com/ladybugdb">The book</a> · <a href="https://github.com/LadybugDB/ladybug">LadybugDB</a></span>
+  </div>
+</footer>
+</body>
+</html>

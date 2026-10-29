@@ -370,6 +370,8 @@ private def pathValue (g : Graph) (nodes : Array InternalId) (rels : Array Rel) 
 
 private def matchPathClause (env : Env) (pv : String) (src : NodePat) (rp : RelPat) (lo hi : Nat)
     (mode : PathMode) (dst : NodePat) : EvalM (Array Env) := do
+  if hi > 30 then
+    fail s!"Binder exception: Upper bound of rel {rp.var.getD ""} exceeds maximum: 30."
   let starts ← matchNode env src
   let g ← graph
   let mut out := #[]

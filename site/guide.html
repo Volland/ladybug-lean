@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guide · ladybug-lean</title>
+  <meta name="description" content="How to use ladybug-lean: tables, typed queries, cypher%, the repository, paths, search, backends and errors.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt=""><span>ladybug<span class="colon"> : </span><span class="full">Lean</span></span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="guide.html" aria-current="page">Guide</a>
+      <a href="book.html">Mini book</a>
+      <a href="examples.html">Example</a>
+      <a href="https://github.com/Volland/ladybug-lean">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<main class="doc">
+  <nav class="toc" aria-label="On this page">
+    <p class="label">Guide</p>
+    <ol>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#tables">Declaring tables</a></li>
+      <li><a href="#builder">The query builder</a></li>
+      <li><a href="#nulls">NULL and three-valued logic</a></li>
+      <li><a href="#cypher">cypher%</a></li>
+      <li><a href="#repo">The repository</a></li>
+      <li><a href="#paths">Paths, subqueries, unions</a></li>
+      <li><a href="#search">Vector and text search</a></li>
+      <li><a href="#backends">Backends and transactions</a></li>
+      <li><a href="#native">Native extras</a></li>
+      <li><a href="#errors">Errors</a></li>
+      <li><a href="#notes">Behaviour to know</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <h1>Guide</h1>
+    <p class="lede">Everything you need to store a typed property graph in LadybugDB from Lean, and to query it with the compiler checking you.</p>
+
+    <section id="install">
+      <h2>Install</h2>
+<pre data-label="lakefile.lean"><code>require ladybug from git "https://github.com/Volland/ladybug-lean" @ "v0.1.0"</code></pre>
+      <p>Two libraries come with the package:</p>
+      <table>
+        <tr><th>Import</th><th>Contains</th><th>Native library</th></tr>
+        <tr><td><code>Ladybug</code></td><td>values and decoding, table commands, typed Cypher, <code>cypher%</code>, the repository, search, <code>MonadGraph</code>, the in-memory backend <code>MemM</code></td><td>no</td></tr>
+        <tr><td><code>LadybugNative</code></td><td>the LadybugDB backend: <code>Database</code>, <code>Connection</code>, <code>LbugM</code>, raw Cypher text, timeouts, file import</td><td>yes</td></tr>
+      </table>
+      <p>The first build downloads the LadybugDB release named in <code>lbug.lock</code> for your platform into <code>.lake/lbug/</code>. The shim loads it at runtime from there, so executables need no library path. <code>lake run lbug-update</code> moves the lock to the latest release; <code>LBUG_LIB_DIR</code> builds against a local Ladybug build; <code>LBUG_LIBRARY</code> overrides the library file at runtime. On Windows the C shim needs MinGW-w64 <code>gcc</code> (for example from MSYS2 UCRT64); <code>CC</code> overrides the compiler.</p>
+    </section>
+
+    <section id="tables">
+      <h2>Declaring tables</h2>
+      <p>A table is an ordinary Lean structure. <code>node_table</code> and <code>rel_table</code> check every field's type when the file compiles and generate the rest.</p>
+<pre data-label="Lean"><code>structure Person where
+  id   : Int64
+  name : String
+  age  : Option Int64
+
+structure Company where
+  name    : String
+  founded : Int32
+
+structure WorksAt where
+  since : Int64
+
+structure Knows                      -- a relationship without properties
+
+node_table Person                    -- label "Person", key `id`
+node_table Company (key := name) (label := "Org")
+rel_table WorksAt (from := Person) (to := Company)
+rel_table Knows (from := Person) (to := Person)
+
+def schema : Schema := [.ofNode Person, .ofNode Company, .ofRel WorksAt, .ofRel Knows]</code></pre>
+      <p>Each command generates encoders and decoders, the table metadata behind <code>ddl Person</code> and <code>applySchema</code>, and two companion structures used in queries:</p>
+      <ul>
+        <li><code>Person.Var</code>: a matched person, whose fields are typed expressions, so <code>p.name : Expr String</code> and <code>p.age : Expr (Option Int64)</code>;</li>
+        <li><code>Person.OptVar</code>: the same after OPTIONAL MATCH, with every field nullable.</li>
+      </ul>
+      <p>Column types are <code>Bool</code>, every signed and unsigned integer width, <code>Int</code> (INT128), <code>Float</code>, <code>Float32</code>, <code>String</code>, <code>ByteArray</code>, <code>Uuid</code>, <code>Date</code>, <code>Timestamp</code>, <code>Interval</code>, <code>Option α</code>, <code>Array α</code>, <code>Embedding n</code> and structures that derive <code>Ladybug.CypherType</code>. A field of another type, a missing key or an <code>Option</code> key is a compile error naming the field.</p>
+<pre data-label="Lean" data-nocopy><code>structure Bad where
+  id : Int64
+  f  : Nat → Nat
+node_table Bad</code></pre>
+      <p class="error-out">node_table Bad: field 'f' has type Nat → Nat, which is not a column type (no Ladybug.CypherType instance)</p>
+    </section>
+
+    <section id="builder">
+      <h2>The query builder</h2>
+      <p>Queries are built in <code>QueryM</code>, a monad that appends clauses and returns typed variables. <code>query</code> turns a builder that ends in <code>return_</code> into a <code>Query α</code>, whose rows have type <code>α</code>; <code>stmt</code> builds a <code>Statement</code> that returns nothing.</p>
+<pre data-label="Lean"><code>def colleagues : Query (String × String × Int64) := query do
+  let p ← match_ (node Person)
+  let (w, c) ← match_ (out p WorksAt (node Company))
+  where_ (w.since >=. 2020 &amp;&amp;. c.founded &lt;. 2000)
+  orderBy p.name
+  limit 10
+  return_ (p.name, c.name, w.since)
+
+def birthday (pid : Int64) : Statement := stmt do
+  let p ← match_ (node Person)
+  where_ (p.id ==. lit pid)
+  set p.age (p.age +. 1)               -- a NULL age stays NULL</code></pre>
+      <table>
+        <tr><th>Clause</th><th>Builder</th></tr>
+        <tr><td>MATCH / OPTIONAL MATCH</td><td><code>match_ (node T)</code>, <code>match_ (out p R (node T))</code>, <code>inc</code>, <code>both</code>, <code>optMatch …</code></td></tr>
+        <tr><td>WHERE</td><td><code>where_ cond</code></td></tr>
+        <tr><td>WITH</td><td><code>let (a, b) ← with_ (e₁, e₂)</code></td></tr>
+        <tr><td>RETURN, ORDER BY, SKIP, LIMIT</td><td><code>orderBy e</code>, <code>orderByDesc e</code>, <code>skip n</code>, <code>limit n</code>, then <code>return_ x</code> (<code>distinct := true</code>)</td></tr>
+        <tr><td>UNWIND</td><td><code>let x ← unwind xs</code></td></tr>
+        <tr><td>CREATE, MERGE</td><td><code>create value</code>, <code>createRel a r b</code>, <code>merge value</code></td></tr>
+        <tr><td>SET, DELETE</td><td><code>set p.age v</code>, <code>delete v</code>, <code>detachDelete v</code></td></tr>
+      </table>
+      <p>Operators end in a dot: <code>==.</code> <code>!=.</code> <code>&lt;.</code> <code>&lt;=.</code> <code>&gt;.</code> <code>&gt;=.</code> <code>&amp;&amp;.</code> <code>||.</code> <code>+.</code> <code>-.</code> <code>*.</code> <code>/.</code> <code>%.</code> <code>++.</code>. Functions live in <code>Expr</code>: <code>Expr.count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>collect</code>, <code>isIn</code>, <code>startsWith</code>, <code>contains</code>, <code>lower</code>, <code>upper</code>, <code>size</code> and more. Numerals and <code>lit x</code> are literals, and every literal is sent as a query parameter, never as text.</p>
+<pre data-label="Lean" data-nocopy><code>colleagues.print
+-- ("MATCH (n0:Person) MATCH (n0)-[r1:WorksAt]->(n2:Org)
+--   WHERE (r1.since >= $p0) AND (n2.founded &lt; $p1)
+--   RETURN n0.name, n2.name, r1.since ORDER BY n0.name LIMIT $p2",
+--  #[("p0", 2020), ("p1", 2000), ("p2", 10)])</code></pre>
+    </section>
+
+    <section id="nulls">
+      <h2>NULL and three-valued logic</h2>
+      <p>Nullability is in the types. A property declared <code>Option τ</code> is an <code>Expr (Option τ)</code>, every property of an OPTIONAL MATCH variable is nullable, and so are <code>sum</code>, <code>avg</code>, <code>min</code> and <code>max</code> (they are NULL over no rows). Comparisons and connectives have type <code>Expr (Option Bool)</code>, where <code>none</code> is Cypher's <em>unknown</em>, and WHERE keeps only the rows that are true.</p>
+<pre data-label="Lean"><code>where_ (p.age >. 30)                      -- unknown for a NULL age: the row is dropped
+where_ (p.age >. 30 ||. p.name ==. lit "Ann")   -- unknown OR true is true
+return_ (coalesce p.age 0)                -- Expr Int64: no longer nullable
+where_ (isTrue (p.age >. 30))             -- unknown becomes false</code></pre>
+      <p>Decoding never surprises you: a nullable expression decodes to <code>Option τ</code>, and a NULL in a column you declared non-nullable is a <code>.decode</code> error that names the column.</p>
+    </section>
+
+    <section id="cypher">
+      <h2><code>cypher%</code></h2>
+      <p>Write Cypher directly. The elaborator checks every label and property against your tables and translates each clause into the builder call that expresses it, so the typing and the printed query are exactly the builder's.</p>
+<pre data-label="Lean"><code>def minAge : Int64 := 30
+
+def adults := cypher%
+  MATCH (p:Person)-[w:WorksAt]->(c:Org)
+  WHERE p.age > $minAge AND c.name STARTS WITH "A"
+  RETURN p.name, c.name, w.since ORDER BY w.since DESC LIMIT 5
+-- adults : Query (String × String × Int64)</code></pre>
+      <ul>
+        <li>Clauses: MATCH, OPTIONAL MATCH, WHERE, WITH, RETURN with ORDER BY/SKIP/LIMIT, UNWIND, CREATE, MERGE, SET, DELETE, DETACH DELETE, CALL for vector and text search, UNION / UNION ALL.</li>
+        <li>Patterns: <code>(a:A)-[r:R]->(b:B)</code>, <code>&lt;-[…]-</code>, <code>-[…]-</code>, ranges <code>*1..3</code>, <code>* SHORTEST 1..5</code>, <code>* ALL SHORTEST 1..5</code>, path variables <code>p = (…)</code>; an end node without a label takes the relationship's endpoint.</li>
+        <li>Expressions: comparisons, AND/OR/XOR/NOT, IS [NOT] NULL, STARTS WITH, ENDS WITH, CONTAINS, IN, arithmetic, lists, aggregates, <code>coalesce</code>, <code>EXISTS { MATCH … }</code>, <code>COUNT { MATCH … }</code>.</li>
+        <li><code>$x</code> is the Lean local <code>x</code> and <code>$(e)</code> any Lean term, both as parameters.</li>
+        <li>Keywords may be upper, lower or capitalized. Strings are Lean string literals, <code>"Ann"</code>. Clauses after the first must start at or right of its column, so the query ends where the indentation does.</li>
+      </ul>
+    </section>
+
+    <section id="repo">
+      <h2>The repository</h2>
+      <p>For the everyday operations you don't need a query at all. The <code>Repo</code> functions are generic over the backend and typed by your tables; keys have the type of the key field.</p>
+<pre data-label="Lean"><code>Repo.insert (Person.mk 1 "Ann" (some 30))        -- .constraint if the key exists
+Repo.upsert { ann with name := "Ann B." }          -- MERGE on the key, overwrite the rest
+let ann? ← Repo.get? Person (1 : Int64)            -- Option Person
+let seniors ← Repo.findWhere Person fun p => p.age >. 60
+Repo.update { ann with age := some 31 }            -- .notFound if there is none
+Repo.delete Person (1 : Int64)                     -- .constraint if it still has relationships
+Repo.detachDelete Person (1 : Int64)
+
+Repo.link (1 : Int64) (WorksAt.mk 2020) "ACME"     -- endpoints by key, typed by WorksAt
+let jobs ← Repo.outgoing WorksAt (1 : Int64)       -- Array (Company × WorksAt)
+let staff ← Repo.incoming WorksAt "ACME"           -- Array (Person × WorksAt)
+let rels ← Repo.between WorksAt (1 : Int64) "ACME"
+Repo.unlink WorksAt (1 : Int64) "ACME"
+
+Repo.insertMany people (batchSize := 1000)         -- one UNWIND query per batch
+Repo.upsertMany people
+Repo.linkMany #[((1 : Int64), WorksAt.mk 2020, "ACME")]
+Repo.copyNodes Person "people.csv"                 -- native: CSV with a header, or Parquet</code></pre>
+      <p>The repository is deliberately small: no identity map, lazy loading or change tracking. Wrap batches in <code>withTx</code> to make a load atomic.</p>
+    </section>
+
+    <section id="paths">
+      <h2>Paths, subqueries, unions</h2>
+<pre data-label="Lean"><code>-- every person within one to three Knows hops, with the paths
+let (path, friend) ← matchPaths p Knows (node Person) (max := 3)
+return_ (friend.name, pathLength path)          -- path : Expr (Path Person Knows)
+
+let (path, b) ← shortestPath a Knows (node Person) (max := 6)
+let (path, b) ← allShortestPaths a Knows (node Person) (max := 6)
+
+where_ (← exists_ (discard (match_ (out p WorksAt (node Company)))))
+let reports ← countSub (discard (match_ (inc p Knows (node Person))))
+
+(namesOfPeople.union namesOfCompanies)          -- both must be Query String</code></pre>
+      <p>Variable-length patterns need an upper bound (<code>max</code> has no default, and Ladybug allows at most 30), so every path query terminates on both backends. A path decodes to <code>Path N R</code> with its nodes, endpoints included, and its relationships.</p>
+    </section>
+
+    <section id="search">
+      <h2>Vector and text search</h2>
+<pre data-label="Lean"><code>structure Doc where
+  id   : Int64
+  text : String
+  emb  : Embedding 384                 -- FLOAT[384]
+
+node_table Doc
+
+runStmt (createVectorIndex Doc "doc_vec" "emb" (metric := .cosine))
+runStmt (createFtsIndex Doc "doc_fts" ["text"])
+
+let hits ← runQueryM do
+  let (d, dist) ← vectorSearch Doc "doc_vec" queryEmbedding (k := 10)
+  where_ (d.id >. 100)                 -- combine with ordinary predicates and patterns
+  orderBy dist
+  return_ (d.text, dist)
+
+let found ← runQueryM do
+  let (d, score) ← ftsSearch Doc "doc_fts" "graph memory"
+  orderByDesc score
+  return_ d.id</code></pre>
+      <p>The native backend installs and loads LadybugDB's <code>vector</code> and <code>fts</code> extensions the first time a query needs them. <code>Embedding.ofArray?</code> builds an embedding only from exactly <code>n</code> numbers.</p>
+    </section>
+
+    <section id="backends">
+      <h2>Backends and transactions</h2>
+      <p>Write against <code>[MonadGraph m]</code> and choose the backend when you run:</p>
+<pre data-label="Lean"><code>def onboard {m : Type → Type} [MonadGraph m] (p : Person) : m Unit := withTx do
+  Repo.upsert p
+  Repo.link p.id (WorksAt.mk 2026) "ACME"
+
+-- LadybugDB
+def main : IO Unit := Ladybug.withDatabase "company.lbug" fun db => db.withConnection do
+  applySchema schema
+  onboard ⟨3, "Cid", none⟩
+
+-- in memory: pure, works in #eval and in tests
+#eval (do applySchema schema; onboard ⟨3, "Cid", none⟩; Repo.findAll Person : MemM _).run' {}</code></pre>
+      <ul>
+        <li><code>runQuery</code>, <code>runStmt</code>, <code>runQueryM</code>, <code>runStmtM</code>: run a typed query or statement.</li>
+        <li><code>withTx</code> and <code>withReadTx</code>: commit on success, roll back on any error; a nested bracket is a <code>.transaction</code> error.</li>
+        <li><code>applySchema</code> creates missing tables; <code>verifySchema</code> lists the differences between your declarations and the database.</li>
+        <li><code>MemM</code> keeps the database in a pure value and interprets queries with Ladybug's semantics; a differential suite checks it against Ladybug.</li>
+      </ul>
+    </section>
+
+    <section id="native">
+      <h2>Native extras</h2>
+<pre data-label="Lean"><code>let rows ← queryAs (String × Int64) "MATCH (p:Person) RETURN p.name, p.age" -- raw Cypher text
+exec "CREATE NODE TABLE Tag(name STRING, PRIMARY KEY(name))"
+let r ← queryRaw "RETURN $x + 1 AS y" #[param "x" (41 : Int64)]
+withTimeout 500 (runQuery heavyQuery)          -- .timeout when exceeded
+conn.interrupt                                  -- from another task: .interrupted
+loadExtension "algo"</code></pre>
+      <p>Structures that <code>deriving FromRow</code> decode raw results by column name; tuples and scalars decode by position.</p>
+    </section>
+
+    <section id="errors">
+      <h2>Errors</h2>
+      <p>Every failure is a <code>Ladybug.Error</code>, caught with ordinary <code>try … catch</code> in the monad:</p>
+      <table>
+        <tr><th>Constructor</th><th>When</th></tr>
+        <tr><td><code>.query</code></td><td>Ladybug rejected or failed a statement</td></tr>
+        <tr><td><code>.constraint</code></td><td>duplicate key, or deleting a node that still has relationships</td></tr>
+        <tr><td><code>.notFound</code></td><td><code>Repo.update</code> or <code>Repo.link</code> found no such node</td></tr>
+        <tr><td><code>.decode</code></td><td>a column did not decode to the requested type (names the column)</td></tr>
+        <tr><td><code>.bind</code>, <code>.prepare</code></td><td>a parameter could not be bound, or is missing</td></tr>
+        <tr><td><code>.transaction</code></td><td>BEGIN/COMMIT failed, or a nested bracket</td></tr>
+        <tr><td><code>.timeout</code>, <code>.interrupted</code></td><td>see <a href="#native">native extras</a></td></tr>
+        <tr><td><code>.open</code>, <code>.storageMismatch</code></td><td>the database could not be opened, or was written by another storage version</td></tr>
+      </table>
+    </section>
+
+    <section id="notes">
+      <h2>Behaviour to know</h2>
+      <ul>
+        <li>The in-memory backend follows Ladybug where openCypher leaves a choice: NULL sorts as the largest value, <code>x IN [.., NULL]</code> is false, integer <code>/</code> and <code>%</code> truncate toward zero, variable-length patterns may repeat relationships, an undirected pattern matches a self-loop twice, and shortest paths never return to their start.</li>
+        <li>Its full-text search uses BM25 and a Porter stemmer: the same documents as Ladybug for ordinary queries, but not the same scores.</li>
+        <li>Ladybug has no <code>CALL { … }</code> subqueries, so neither does the typed language.</li>
+        <li>A union value's member name is empty when the union has more than one member, because the C API does not report it.</li>
+        <li>Timeouts and interrupts take effect between Ladybug's units of work, so one long step can overrun a timeout.</li>
+      </ul>
+    </section>
+  </article>
+</main>
+
+<footer>
+  <div class="inner">
+    <span>ladybug-lean · MIT licensed</span>
+    <span><a href="https://github.com/Volland/ladybug-lean">GitHub</a> · <a href="https://leanpub.com/ladybugdb">The book</a> · <a href="https://github.com/LadybugDB/ladybug">LadybugDB</a></span>
+  </div>
+</footer>
+</body>
+</html>

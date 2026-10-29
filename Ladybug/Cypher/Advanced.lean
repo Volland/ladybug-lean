@@ -49,7 +49,8 @@ private def matchPathWith (mode : Core.PathMode) (src : S) (ρ : Type) (dst : T)
 -- @tg: implements:: [[openspec:cypher-query#Variable-length paths]]
 /-- `MATCH p = (src)-[:ρ*min..max]->(dst)`: every path of `min` to `max`
 relationships of a table from a node table to itself. `max` has no default, so
-an unbounded pattern cannot be written. Returns the path and the end node. -/
+an unbounded pattern cannot be written; Ladybug allows at most 30. Returns the
+path and the end node. -/
 def matchPaths (src : S) (ρ : Type) (dst : T) (min : Nat := 1) (max : Nat) (dir : Core.Dir := .out)
     [NodeVarOf S σ] [RelTable ρ σ σ] [PatEnd T σ V O] : QueryM (Expr (Path σ ρ) × V) :=
   matchPathWith .all src ρ dst min max dir

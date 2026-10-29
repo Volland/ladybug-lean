@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Example · ladybug-lean</title>
+  <meta name="description" content="A small agent memory built with ladybug-lean: a typed schema, generic memory functions, compile-time checks and a native run.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt=""><span>ladybug<span class="colon"> : </span><span class="full">Lean</span></span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="guide.html">Guide</a>
+      <a href="book.html">Mini book</a>
+      <a href="examples.html" aria-current="page">Example</a>
+      <a href="https://github.com/Volland/ladybug-lean">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<main class="doc">
+  <nav class="toc" aria-label="On this page">
+    <p class="label">agent-memory</p>
+    <ol>
+      <li><a href="#project">The project</a></li>
+      <li><a href="#schema">1. The ontology</a></li>
+      <li><a href="#functions">2. Remembering and recalling</a></li>
+      <li><a href="#checks">3. Checked while compiling</a></li>
+      <li><a href="#run">4. Running on LadybugDB</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <h1>Example: an agent's memory</h1>
+    <p class="lede">A small Lake project, <a href="https://github.com/Volland/ladybug-lean/tree/main/examples/agent-memory"><code>examples/agent-memory</code></a>, that stores what an AI agent remembers as a typed property graph: memories with embeddings, the entities they mention, how entities relate, and a timeline.</p>
+
+    <section id="project">
+      <h2>The project</h2>
+<pre data-label="lakefile.lean"><code>import Lake
+open Lake DSL
+
+package «agent-memory»
+
+require ladybug from git "https://github.com/Volland/ladybug-lean" @ "v0.1.0"
+
+lean_lib AgentMemory
+
+@[default_target]
+lean_exe «agent-memory» where
+  root := `Main</code></pre>
+<pre data-label="shell"><code class="plain">lake build AgentMemory     # compiles the schema and runs every check
+lake exe agent-memory      # runs on a LadybugDB file, memory.lbug</code></pre>
+      <svg class="diagram" viewBox="0 0 720 210" role="img" aria-label="Schema: Memory nodes mention Entity nodes; entities relate to entities; memories link to the next memory">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+        <g style="color: var(--muted)">
+          <path class="edge" d="M260 80 L450 80" marker-end="url(#arr)"/>
+          <path class="edge" d="M560 115 C 640 170, 480 190, 540 120" marker-end="url(#arr)"/>
+          <path class="edge" d="M110 115 C 30 175, 210 190, 150 120" marker-end="url(#arr)"/>
+        </g>
+        <rect class="node" x="40" y="40" width="220" height="76" rx="12"/>
+        <text x="56" y="64" font-weight="700">:Memory</text>
+        <text x="56" y="84">id, text, importance : Int32</text>
+        <text x="56" y="102">happenedAt, embedding : FLOAT[4]</text>
+        <rect class="node" x="460" y="40" width="200" height="76" rx="12"/>
+        <text x="476" y="64" font-weight="700">:Entity</text>
+        <text x="476" y="84">name (key), kind</text>
+        <text class="lbl" x="290" y="70">:Mentions { weight }</text>
+        <text class="lbl" x="600" y="190">:Relates { label }</text>
+        <text class="lbl" x="30" y="190">:Next</text>
+      </svg>
+    </section>
+
+    <section id="schema">
+      <h2>1. The ontology</h2>
+      <p>The whole schema is five structures and five declarations. Nothing else describes the database: the DDL, the decoders and the typed query variables are derived from these.</p>
+<pre data-label="AgentMemory/Schema.lean"><code>structure Entity where
+  name : String
+  kind : String
+
+structure Memory where
+  id : Int64
+  text : String
+  importance : Int32
+  happenedAt : Timestamp
+  embedding : Embedding 4
+
+structure Mentions where
+  weight : Option Float
+
+structure Relates where
+  label : String
+
+structure Next
+
+node_table Entity (key := name)
+node_table Memory
+rel_table Mentions (from := Memory) (to := Entity)
+rel_table Relates (from := Entity) (to := Entity)
+rel_table Next (from := Memory) (to := Memory)
+
+def schema : Schema :=
+  [.ofNode Entity, .ofNode Memory, .ofRel Mentions, .ofRel Relates, .ofRel Next]</code></pre>
+    </section>
+
+    <section id="functions">
+      <h2>2. Remembering and recalling</h2>
+      <p>Every function is written once against <code>MonadGraph</code>, so it runs on LadybugDB and on the in-memory graph. Notice the mix: the repository for writes, the builder for a vector search and for paths, and plain Cypher for a lookup, all checked against the schema.</p>
+<pre data-label="AgentMemory/Memory.lean"><code>variable {m : Type → Type} [MonadGraph m]
+
+/-- Store a memory, link it to the entities it mentions and to the previous memory. -/
+def remember (mem : Memory) (mentions : List (String × Float)) (previous : Option Int64 := none) : m Unit :=
+  withTx do
+    Repo.insert mem
+    for (name, w) in mentions do
+      Repo.link mem.id (Mentions.mk (some w)) name
+    if let some prev := previous then
+      Repo.link prev Next.mk mem.id
+
+/-- The `k` memories closest in meaning to `q`, nearest first. -/
+def recallSimilar (q : Embedding 4) (k : Nat) : m (Array (String × Float)) :=
+  runQueryM do
+    let (mem, dist) ← vectorSearch Memory "memory_vec" q k
+    orderBy dist
+    return_ (mem.text, dist)
+
+/-- The memories that mention an entity, most important first. -/
+def about (entity : String) : m (Array (String × Int32)) :=
+  runQuery (cypher%
+    MATCH (mem:Memory)-[:Mentions]->(e:Entity)
+    WHERE e.name = $entity
+    RETURN mem.text, mem.importance ORDER BY mem.importance DESC)
+
+/-- Entities reachable from one entity in one or two `Relates` hops. -/
+def neighbourhood (entity : String) : m (Array String) :=
+  runQueryM do
+    let e ← match_ (node Entity)
+    let (_, other) ← matchPaths e Relates (node Entity) (max := 2) (dir := .both)
+    where_ (e.name ==. lit entity &amp;&amp;. other.name !=. lit entity)
+    return_ other.name (distinct := true)
+
+/-- How many steps of the timeline separate two memories. -/
+def distance (a b : Int64) : m (Option Int64) := do
+  let rows ← runQueryM do
+    let x ← match_ (node Memory)
+    let (path, y) ← shortestPath x Next (node Memory) (max := 30)
+    where_ (x.id ==. lit a &amp;&amp;. y.id ==. lit b)
+    return_ (pathLength path)
+  return rows[0]?
+
+/-- Entities no memory mentions any more. -/
+def forgotten : m (Array String) :=
+  runQueryM do
+    let e ← match_ (node Entity)
+    where_ (Expr.not (← exists_ (discard (match_ (inc e Mentions (node Memory))))))
+    return_ e.name</code></pre>
+    </section>
+
+    <section id="checks">
+      <h2>3. Checked while compiling</h2>
+      <p>This file has no <code>main</code>. It is checked every time it builds: <code>#guard</code> runs the memory functions on the in-memory backend and compares the results, and <code>#guard_msgs</code> pins the error for each query the schema must reject. Change a function, a query or the schema in a way that changes behaviour, and the build fails.</p>
+<pre data-label="AgentMemory/Checks.lean"><code>def onSeed {α : Type} (prog : MemM α) : Except Error α := (do seed; prog).run' {}
+
+#guard (onSeed (about "Ann")).toOption == some #[("Ann started the Ladybug bindings", 5),
+  ("Meetup in Kyiv about graph memory", 4), ("Bob reviewed Ann's first query", 3)]
+
+#guard (onSeed (distance 1 4)).toOption == some (some 3)
+
+#guard (onSeed forgotten).toOption == some #["Kyiv"]
+
+/-- error: unknown property 'importanse' of table Memory; did you mean 'importance'? -/
+#guard_msgs in
+example := cypher% MATCH (mem:Memory) RETURN mem.importanse
+
+-- `Mentions` goes from a memory to an entity, not the other way round.
+/-- error: failed to synthesize instance of type class Matchable (PatOut Entity.Var Mentions (NodeRef Memory)) -/
+#guard_msgs (whitespace := lax, substring := true) in
+example : Query String := query do
+  let e ← match_ (node Entity)
+  let (_, mem) ← match_ (out e Mentions (node Memory))
+  return_ mem.text
+
+-- Importance is an `Int32`: comparing it with a string is a type error.
+/-- error: failed to synthesize instance of type class Expr.LitFor Int32 String -/
+#guard_msgs (whitespace := lax, substring := true) in
+example : Query String := query do
+  let mem ← match_ (node Memory)
+  where_ (mem.importance >. lit "high")
+  return_ mem.text
+
+-- An optional match makes every property nullable, and the result type says so.
+example : Query (String × Option String) :=
+  cypher% MATCH (mem:Memory) OPTIONAL MATCH (mem)-[:Mentions]->(e:Entity) RETURN mem.text, e.kind</code></pre>
+    </section>
+
+    <section id="run">
+      <h2>4. Running on LadybugDB</h2>
+      <p>The executable runs the same functions on a database file. Its output agrees with what the checks assert for the in-memory backend:</p>
+<pre data-label="Main.lean"><code>def main : IO Unit :=
+  Ladybug.withDatabase "memory.lbug" fun db => db.withConnection do
+    seed
+    IO.println s!"about Ann:        {← about "Ann"}"
+    IO.println s!"near Ann:         {← neighbourhood "Ann"}"
+    IO.println s!"memories 1 → 4:   {(← distance 1 4).getD 0} steps"
+    IO.println s!"like memory 1:    {← recallSimilar (vec [1, 0, 0, 0]) 2}"
+    IO.println s!"nobody mentions:  {← forgotten}"</code></pre>
+      <p class="ok-out">about Ann:        #[(Ann started the Ladybug bindings, 5), (Meetup in Kyiv about graph memory, 4), (Bob reviewed Ann's first query, 3)]
+near Ann:         #[Ladybug, Bob, Lean]
+memories 1 → 4:   3 steps
+like memory 1:    #[(Ann started the Ladybug bindings, 0.000000), (Bob reviewed Ann's first query, 0.029858)]
+nobody mentions:  #[Kyiv]</p>
+      <div class="callout"><strong>Grow it.</strong> The memory ontology in <a href="https://leanpub.com/ladybugdb"><em>LadybugDB for Edge Agent AI Memory</em></a> adds an entity hierarchy, facts and events, typed edge tables and a time tree. Each of those is another structure and another <code>node_table</code> or <code>rel_table</code> here.</div>
+    </section>
+  </article>
+</main>
+
+<footer>
+  <div class="inner">
+    <span>ladybug-lean · MIT licensed</span>
+    <span><a href="https://github.com/Volland/ladybug-lean">GitHub</a> · <a href="https://leanpub.com/ladybugdb">The book</a> · <a href="https://github.com/LadybugDB/ladybug">LadybugDB</a></span>
+  </div>
+</footer>
+</body>
+</html>

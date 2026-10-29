@@ -1,5 +1,7 @@
 # ladybug-lean
 
+**Website: [volland.github.io/ladybug-lean](https://volland.github.io/ladybug-lean/)** · [Guide](https://volland.github.io/ladybug-lean/guide.html) · [Mini book](https://volland.github.io/ladybug-lean/book.html) · [Example](examples/agent-memory)
+
 A Lean 4 library for [LadybugDB](https://github.com/LadybugDB/ladybug), the embedded graph database, with:
 
 - **typed Cypher**: queries are checked against your schema when you compile, written either with a monadic builder or as Cypher text (`cypher%`);
@@ -118,13 +120,20 @@ In `cypher%`, keywords may be upper, lower or capitalized case, strings are Lean
 - A union value's member name is empty when the union has more than one member, because the C API does not report it.
 - Timeouts and interrupts take effect between Ladybug's units of work, so a query can overrun its timeout.
 
+## Example
+
+[`examples/agent-memory`](examples/agent-memory) is a small project that stores an AI agent's memory as a typed property graph: a schema of five tables, recall functions written once for both backends, checks that run while it compiles, and a native run on a LadybugDB file.
+
 ## Development
 
 ```sh
 lake build tests && .lake/build/bin/tests   # the full suite
 DIFF_CASES=3000 TEST_FILTER=differential .lake/build/bin/tests
 scripts/check-native-library.sh             # download caching, lbug-update, LBUG_LIB_DIR
+(cd examples/agent-memory && lake build AgentMemory && lake exe agent-memory)
 ```
+
+The website lives in `site/` (static HTML, deployed to GitHub Pages by `.github/workflows/pages.yml`); its Lean snippets are compiled and checked by `Tests/SiteSnippets.lean`.
 
 Intent lives in `tg.md/` (decisions, constraints and architecture, as a typed graph checked with `tg check`) and requirements in `openspec/specs/`; the milestones' changes are archived under `openspec/changes/archive/`.
 

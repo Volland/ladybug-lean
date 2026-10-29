@@ -77,6 +77,12 @@ Variable-length and shortest paths bind typed `Path` values, `exists_`/`countSub
 
 - defines:: [[decisions#Differential testing against Ladybug]]
 
+## Documentation site and example
+
+`site/` is the static website (GitHub Pages), with a guide and a mini book that links to *LadybugDB for Edge Agent AI Memory*. `examples/agent-memory` is a standalone Lake project using the library.
+
+The site's Lean snippets are compiled by `Tests/SiteSnippets.lean`, and the example's checks run when it builds, so neither drifts from the library.
+
 ## Pure core
 
 The `Ladybug` library has no native dependency: values, decoding, schema, the typed Cypher language, the ORM and the in-memory backend all run in the editor with `#eval`.

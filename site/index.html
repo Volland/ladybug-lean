@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ladybug-lean</title>
+  <meta name="description" content="Typed property graphs for Lean 4: LadybugDB with a compile-time-checked Cypher DSL, a repository layer and an in-memory backend.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt=""><span>ladybug<span class="colon"> : </span><span class="full">Lean</span></span></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html" aria-current="page">Home</a>
+      <a href="guide.html">Guide</a>
+      <a href="book.html">Mini book</a>
+      <a href="examples.html">Example</a>
+      <a href="https://github.com/Volland/ladybug-lean">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div>
+      <h1 class="title">ladybug<span class="colon"> : </span>Lean</h1>
+      <p class="lede">Typed property graphs for Lean 4. Use the <a href="https://github.com/LadybugDB/ladybug">LadybugDB</a> embedded graph database from Lean, with a schema the compiler knows, Cypher it checks, and an in-memory twin of the database for <code>#eval</code> and tests.</p>
+      <div class="actions">
+        <a class="button primary" href="guide.html">Get started</a>
+        <a class="button" href="book.html">Read the mini book</a>
+        <a class="button" href="https://github.com/Volland/ladybug-lean">Source</a>
+      </div>
+    </div>
+    <img class="mark" src="assets/logo.svg" alt="ladybug-lean logo: a ladybug whose wing split is the type turnstile ⊢ and whose spots form a small graph">
+  </section>
+
+  <section>
+    <h2>The schema is a type</h2>
+    <p class="lede">In LadybugDB the schema is the ontology, and the database enforces it when you write. ladybug-lean moves that enforcement to compile time: your node and relationship tables are Lean structures, and every query is checked against them before it runs.</p>
+    <div class="split">
+<pre data-label="Lean"><code>structure Person where
+  id   : Int64
+  name : String
+  age  : Option Int64     -- nullable column
+
+structure Company where
+  name : String
+
+structure WorksAt where
+  since : Int64
+
+node_table Person                    -- key `id`
+node_table Company (key := name)
+rel_table WorksAt (from := Person) (to := Company)</code></pre>
+<pre data-label="Generated DDL" data-nocopy><code class="cypher">CREATE NODE TABLE IF NOT EXISTS Person(
+  id INT64, name STRING, age INT64,
+  PRIMARY KEY(id))
+CREATE NODE TABLE IF NOT EXISTS Company(
+  name STRING, PRIMARY KEY(name))
+CREATE REL TABLE IF NOT EXISTS WorksAt(
+  FROM Person TO Company, since INT64)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Queries that don't fit the schema don't compile</h2>
+    <p>Write Cypher as you know it, or build the same query in a monad. Both produce one typed AST, and both know the result type.</p>
+<pre data-label="Lean"><code>def employees : Query (String × Option String) :=
+  cypher% MATCH (p:Person) OPTIONAL MATCH (p)-[:WorksAt]->(c:Company)
+          RETURN p.name, c.name ORDER BY p.name
+
+def seniors : Query String := query do
+  let p ← match_ (node Person)
+  where_ (p.age >. 60)               -- p.age : Expr (Option Int64)
+  return_ p.name</code></pre>
+    <p>A typo, a type mismatch or a pattern the schema forbids is an error at the token that causes it:</p>
+<pre data-label="Lean" data-nocopy><code>example := cypher% MATCH (p:Person) RETURN p.nmae</code></pre>
+    <p class="error-out">unknown property 'nmae' of table Person; did you mean 'name'?</p>
+<pre data-label="Lean" data-nocopy><code>example := query do
+  let c ← match_ (node Company)
+  let _ ← match_ (out c WorksAt (node Person))   -- WorksAt goes Person → Company
+  return_ c.name</code></pre>
+    <p class="error-out">failed to synthesize instance of type class Matchable (PatOut Company.Var WorksAt (NodeRef Person)) …</p>
+  </section>
+
+  <section>
+    <h2>What's in the box</h2>
+    <div class="grid">
+      <div class="card"><h3>Typed Cypher</h3><p>A monadic builder and a <code>cypher%</code> syntax over one AST. NULL is in the types, with Cypher's three-valued logic. Every Lean value becomes a query parameter, never query text.</p></div>
+      <div class="card"><h3>Repository</h3><p><code>Repo.insert</code>, <code>upsert</code>, <code>get?</code>, <code>update</code>, <code>delete</code>, <code>link</code>, <code>outgoing</code>, batched <code>insertMany</code> and CSV/Parquet import, all typed by your tables.</p></div>
+      <div class="card"><h3>Graph queries</h3><p>Variable-length and shortest paths as typed <code>Path</code> values, <code>EXISTS</code> and <code>COUNT</code> subqueries, and <code>UNION</code> of queries with the same result type.</p></div>
+      <div class="card"><h3>Search</h3><p><code>Embedding n</code> columns, vector indexes and nearest-neighbour queries, and full-text indexes, combined with graph patterns in one query.</p></div>
+      <div class="card"><h3>Two backends</h3><p>Code written against <code>MonadGraph</code> runs on LadybugDB (<code>LbugM</code>) or on a pure in-memory graph (<code>MemM</code>). The in-memory one works in <code>#eval</code>.</p></div>
+      <div class="card"><h3>Checked against Ladybug</h3><p>A differential suite runs generated queries on both backends and shrinks any disagreement, and property tests round-trip every column type.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>One program, two backends</h2>
+<pre data-label="Lean"><code>def demo {m : Type → Type} [MonadGraph m] : m (Array (String × Option String)) := do
+  applySchema [.ofNode Person, .ofNode Company, .ofRel WorksAt]
+  Repo.insert (Person.mk 1 "Ann" (some 41))
+  Repo.insert (Person.mk 2 "Bob" none)
+  Repo.insert (Company.mk "ACME")
+  Repo.link (1 : Int64) (WorksAt.mk 2020) "ACME"
+  runQuery employees
+
+#eval (demo : MemM _).run' {}         -- pure, in the editor
+
+def main : IO Unit :=                 -- on a LadybugDB file
+  Ladybug.withDatabase "company.lbug" fun db => db.withConnection do
+    IO.println (← demo)</code></pre>
+    <p class="ok-out">Except.ok #[("Ann", some "ACME"), ("Bob", none)]</p>
+  </section>
+
+  <section>
+    <h2>Install</h2>
+<pre data-label="lakefile.lean"><code>require ladybug from git "https://github.com/Volland/ladybug-lean" @ "v0.1.0"</code></pre>
+    <p>The first build downloads the official LadybugDB library for your platform (macOS, Linux, Windows; x86_64 and arm64), and the library is loaded at runtime, so there is no rpath to set. Lean <code>v4.35.0</code>. On Windows the build needs MinGW-w64 <code>gcc</code>.</p>
+  </section>
+
+  <section>
+    <div class="callout">
+      <strong>Learn the graph side.</strong> This library is the Lean companion to <a href="https://leanpub.com/ladybugdb"><em>LadybugDB for Edge Agent AI Memory</em></a>, a book about property graphs, Cypher, typed ontologies, metagraphs, semantic spacetime and agent memory built on LadybugDB. The <a href="book.html">mini book</a> on this site gives the main ideas and how they look in Lean.
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="inner">
+    <span>ladybug-lean · MIT licensed</span>
+    <span><a href="https://github.com/Volland/ladybug-lean">GitHub</a> · <a href="https://leanpub.com/ladybugdb">The book</a> · <a href="https://github.com/LadybugDB/ladybug">LadybugDB</a></span>
+  </div>
+</footer>
+</body>
+</html>

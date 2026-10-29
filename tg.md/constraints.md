@@ -170,7 +170,7 @@ source:: observed with Ladybug 0.22.1; pinned by `Tests/Memory.lean` (pinnedBeha
 
 ## Ladybug path semantics
 
-Variable-length patterns use walk semantics (relationships may repeat), an undirected pattern matches a self-loop once per direction, and shortest paths never return to their start node.
+Variable-length patterns use walk semantics (relationships may repeat), an undirected pattern matches a self-loop once per direction, shortest paths never return to their start node, and an upper bound above 30 is rejected.
 
 source:: observed with Ladybug 0.22.1; found by the differential suite and pinned by `Tests/Memory.lean`
 

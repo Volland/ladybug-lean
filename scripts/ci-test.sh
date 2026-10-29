@@ -13,6 +13,10 @@ run_suite() {
 }
 
 run_suite
+
+# The example project builds against this checkout and runs its compile-time checks.
+(cd examples/agent-memory && lake build AgentMemory agent-memory)
+
 case "$(uname -s 2>/dev/null || echo Windows)" in
   Linux|Darwin) scripts/check-native-library.sh ;;
   *) echo "build-level checks are not run on this platform" ;;
