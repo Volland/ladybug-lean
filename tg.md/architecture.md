@@ -81,6 +81,8 @@ Variable-length and shortest paths bind typed `Path` values, `exists_`/`countSub
 
 `site/` is the static website (GitHub Pages), with a guide and a mini book that links to *LadybugDB for Edge Agent AI Memory*. `examples/agent-memory` is a standalone Lake project using the library.
 
+Every footer links the German legal pages: `impressum.html` (§ 5 DDG), `datenschutz.html` (privacy policy covering GitHub Pages hosting and the `localStorage` theme key) and `agb.html` (terms of use). The privacy policy relies on the site loading nothing from third parties, so new pages must not add external fonts, scripts or analytics without updating it.
+
 The site's Lean snippets are compiled by `Tests/SiteSnippets.lean`, and the example's checks run when it builds, so neither drifts from the library.
 
 ## Pure core

@@ -297,6 +297,13 @@ th { color: var(--muted); font-weight: 600; }
 .diagram .box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
 .diagram .hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
 
+/* Legal pages */
+.legal { max-width: 46em; padding-top: 40px; }
+.legal section { padding: 20px 0 4px; }
+.legal h2 { font-size: 21px; margin-bottom: 8px; }
+.legal address { font-style: normal; }
+.legal ul { padding-left: 1.3em; }
+
 /* Footer */
 footer {
   border-top: 1px solid var(--border);
