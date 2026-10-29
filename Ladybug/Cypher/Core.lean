@@ -54,6 +54,10 @@ inductive Expr where
   /-- A table or index name passed to a procedure, printed as a string literal.
   Only identifiers from declarations are used here. -/
   | name (s : String)
+  /-- `CAST(e AS type)`, with `type` a column type from a declaration. -/
+  | cast (e : Expr) (type : String)
+  /-- A struct literal `{k: e, …}`. -/
+  | structLit (fields : List (String × Expr))
 
 structure NodePat where
   var : String

@@ -68,7 +68,7 @@ Lake's `extern_lib` is deprecated in favour of custom targets with `moreLinkObjs
 
 source:: Lake README for v4.35; lean4 `tests/lake/examples/ffi`
 
-- constrains:: [[decisions#Track the latest Ladybug release]] {strength: should, note: "fetched library is linked through moreLinkLibs"}
+- constrains:: [[decisions#Track the latest Ladybug release]] {strength: should, note: "the library is loaded at runtime instead"}
 
 ## Interpreter cannot run native initializers
 
@@ -175,3 +175,19 @@ Variable-length patterns use walk semantics (relationships may repeat), an undir
 source:: observed with Ladybug 0.22.1; found by the differential suite and pinned by `Tests/Memory.lean`
 
 - constrains:: [[decisions#Two backends one API]] {strength: must}
+
+## Extensions resolve the library's global symbols
+
+Ladybug loads its extensions (vector, fts) as shared libraries that resolve Ladybug's own symbols from the global namespace, so a runtime-loaded Ladybug library must be opened with `RTLD_GLOBAL`.
+
+source:: observed with Ladybug 0.22.1 extensions on macOS ("symbol not found in flat namespace")
+
+- constrains:: [[decisions#Load Ladybug at runtime]] {strength: must}
+
+## Parameter types come from their context
+
+Ladybug types a parameter from where it is used, e.g. from a surrounding CAST, and then rejects a bound value of another type, so an empty list bound as `INT64[]` cannot fill a `STRING[]` column.
+
+source:: Ladybug 0.22.1 error "Cannot change parameter expression data type from INT64[] to STRING[]"; found by the property suite
+
+- constrains:: [[decisions#Column writes are cast to the column type]] {strength: must}

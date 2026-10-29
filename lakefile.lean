@@ -8,68 +8,61 @@ package ladybug where
 /-! ## Native Ladybug library
 
 The library version lives in `lbug.lock`. The `lbugDir` target puts the official
-release library for this platform (or a copy of `LBUG_LIB_DIR`) into
-`.lake/lbug/<version>/<platform>/` and rewrites its install name to that absolute
-path, so every executable that links it finds it without an rpath. -/
+release library for this platform into `.lake/lbug/<version>/<platform>/` (or
+uses `LBUG_LIB_DIR`), and the C shim is compiled with that library's absolute
+path: it loads the library at runtime, so nothing links against it. -/
 
-/-- Release asset suffix for the host platform. -/
-def lbugPlatform : String :=
+structure LbugPlatform where
+  /-- Release asset suffix, e.g. `osx-arm64`. -/
+  name : String
+  /-- Archive extension of the release asset. -/
+  archive : String
+  /-- The shared library file inside it. -/
+  library : String
+
+-- @tg: implements:: [[openspec:native-library#Supported platforms]]
+/-- The host platform's Ladybug release asset. -/
+def lbugPlatform : LbugPlatform :=
   let arm := System.Platform.target.startsWith "aarch64" || System.Platform.target.startsWith "arm64"
-  if System.Platform.isOSX then if arm then "osx-arm64" else "osx-x86_64"
-  else if System.Platform.isWindows then if arm then "windows-arm64" else "windows-x86_64"
-  else if arm then "linux-aarch64" else "linux-x86_64"
+  if System.Platform.isOSX then ⟨if arm then "osx-arm64" else "osx-x86_64", "tar.gz", "liblbug.dylib"⟩
+  else if System.Platform.isWindows then ⟨if arm then "windows-arm64" else "windows-x86_64", "zip", "lbug_shared.dll"⟩
+  else ⟨if arm then "linux-aarch64" else "linux-x86_64", "tar.gz", "liblbug.so"⟩
 
 def readLbugLock (pkgDir : FilePath) : IO String :=
   return (← IO.FS.readFile (pkgDir / "lbug.lock")).trimAscii.toString
 
-/-- Make the install name of the copied macOS library its absolute path. -/
-def patchInstallName (dir : FilePath) : LogIO Unit := do
-  if System.Platform.isOSX then
-    let lib := dir / "liblbug.0.dylib"
-    proc { cmd := "install_name_tool", args := #["-id", lib.toString, lib.toString] } (quiet := true)
-    proc { cmd := "codesign", args := #["-f", "-s", "-", lib.toString] } (quiet := true)
-
 -- @tg: implements:: [[openspec:native-library#Pinned library version]]
 -- @tg: implements:: [[openspec:native-library#Library override]]
 target lbugDir pkg : FilePath := Job.async do
-  let root := (← IO.currentDir) / pkg.dir / ".lake" / "lbug"
-  if let some src ← IO.getEnv "LBUG_LIB_DIR" then
-    let dir := root / "override" / lbugPlatform
-    IO.FS.createDirAll dir
-    proc { cmd := "cp", args := #["-RPf", s!"{src}/.", dir.toString] } (quiet := true)
-    unless ← (dir / "liblbug.0.dylib").pathExists do
-      if System.Platform.isOSX then
-        proc { cmd := "ln", args := #["-sf", "liblbug.dylib", (dir / "liblbug.0.dylib").toString] } (quiet := true)
-    patchInstallName dir
-    return dir
+  if let some dir ← IO.getEnv "LBUG_LIB_DIR" then
+    return FilePath.mk dir
   let ver ← readLbugLock pkg.dir
-  let dir := root / ver / lbugPlatform
+  let dir := (← IO.currentDir) / pkg.dir / ".lake" / "lbug" / ver / lbugPlatform.name
   unless ← (dir / "lbug.h").pathExists do
     IO.FS.createDirAll dir
-    let asset := s!"liblbug-{lbugPlatform}.tar.gz"
+    let asset := s!"liblbug-{lbugPlatform.name}.{lbugPlatform.archive}"
     let url := s!"https://github.com/LadybugDB/ladybug/releases/download/v{ver}/{asset}"
-    logInfo s!"downloading Ladybug {ver} ({lbugPlatform})"
+    logInfo s!"downloading Ladybug {ver} ({lbugPlatform.name})"
     proc { cmd := "curl", args := #["-fsSL", "-o", (dir / asset).toString, url] }
-    proc { cmd := "tar", args := #["-xzf", asset], cwd := dir }
+    -- bsdtar (macOS, Windows) and GNU tar both unpack .tar.gz; bsdtar also unpacks .zip.
+    proc { cmd := "tar", args := #["-xf", asset], cwd := dir }
     IO.FS.removeFile (dir / asset)
-    patchInstallName dir
   return dir
 
 -- @tg: implements:: [[openspec:native-library#Executables find the library at runtime]]
-target liblbug _pkg : Dynlib := do
-  (← lbugDir.fetch).mapM fun dir => do
-    let lib := dir / nameToSharedLib "lbug"
-    addTrace (← computeTrace lib)
-    return { path := lib, name := "lbug" }
-
 target lbugShim.o pkg : FilePath := do
   let leanInc ← getLeanIncludeDir
+  -- Windows has no system `cc`; Lean's bundled clang targets its MinGW ABI there.
+  let cc ← if System.Platform.isWindows then getLeanCc else pure "cc"
+  let pic := if System.Platform.isWindows then #[] else #["-fPIC"]
   let src ← inputTextFile (pkg.dir / "c" / "lbug_shim.c")
   (← lbugDir.fetch).bindM fun dir => do
+    let lib := (dir / lbugPlatform.library).toString.replace "\\" "/"
     let hdr ← inputTextFile (dir / "lbug.h")
     hdr.bindM fun _ =>
       buildO (pkg.buildDir / "c" / "lbug_shim.o") src
-        #["-I", leanInc.toString, "-I", dir.toString] #["-fPIC", "-O2", "-Wall"]
+        #["-I", leanInc.toString, "-I", dir.toString, "-I", (pkg.dir / "c").toString]
+        (pic ++ #["-O2", "-Wall", s!"-DLBUG_LIB_PATH=\"{lib}\""]) cc
         (extraDepTrace := computeTrace (dir / "lbug.h"))
 
 target libLbugShim pkg : FilePath := do
@@ -84,7 +77,6 @@ lean_lib Ladybug where
 lean_lib LadybugNative where
   globs := #[.andSubmodules `LadybugNative]
   moreLinkObjs := #[libLbugShim]
-  moreLinkLibs := #[liblbug]
 
 lean_lib Tests where
   globs := #[.andSubmodules `Tests]

@@ -31,12 +31,12 @@ private def nodeMatch (var : String) (label key : String) (k : Value) : Array Co
 /-- `SET var.c = …` for every column except `skip`; nothing if there is none. -/
 private def setAll (var : String) (cols : Array Column) (skip : String) (v : Value) : Array Core.Clause :=
   match (cols.toList.filter (·.name != skip)).map fun c =>
-      (⟨.prop (.var var) c.name, .value ((v.field? c.name).getD .null)⟩ : Core.SetItem) with
+      (⟨.prop (.var var) c.name, c.written (.value ((v.field? c.name).getD .null))⟩ : Core.SetItem) with
   | [] => #[]
   | items => #[.set items]
 
 private def propsOf (cols : Array Column) (v : Value) : List (String × Core.Expr) :=
-  cols.toList.map fun c => (c.name, .value ((v.field? c.name).getD .null))
+  cols.toList.map fun c => (c.name, c.written (.value ((v.field? c.name).getD .null)))
 
 private def returnItems (es : List Core.Expr) : Core.Clause := .return (es.map (⟨·, none⟩)) false {}
 
@@ -156,7 +156,7 @@ private def chunks (xs : Array β) (size : Nat) : Array (Array β) := Id.run do
   return out
 
 private def rowProps (cols : Array Column) : List (String × Core.Expr) :=
-  cols.toList.map fun c => (c.name, .prop (.var "row") c.name)
+  cols.toList.map fun c => (c.name, c.written (.prop (.var "row") c.name))
 
 -- @tg: implements:: [[openspec:graph-orm#Batched insert]]
 /-- Insert nodes in batches, one `UNWIND $rows … CREATE` query per batch.
@@ -174,7 +174,7 @@ def upsertMany [MonadGraph m] [NodeTable α] [ToValue α] (xs : Array α) (batch
     let clauses : Array Core.Clause := #[.unwind (.value (.list (batch.map toValue))) "row",
       .merge ⟨⟨"n0", some (NodeTable.label α), [(key, .prop (.var "row") key)]⟩, []⟩]
     let clauses := if rest.isEmpty then clauses
-      else clauses.push (.set (rest.map fun c => ⟨.prop (.var "n0") c.name, .prop (.var "row") c.name⟩))
+      else clauses.push (.set (rest.map fun c => ⟨.prop (.var "n0") c.name, c.written (.prop (.var "row") c.name)⟩))
     runStmt ⟨⟨clauses⟩⟩
 
 /-- Create relationships in batches from (source key, relationship, destination key) triples. -/

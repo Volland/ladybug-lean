@@ -9,11 +9,61 @@
 // Results are copied into Lean `Value`s before the cursor moves, through
 // constructor functions exported from Ladybug/Value.lean, so this file never
 // depends on the memory layout of Lean inductive types.
+//
+// The Ladybug library is loaded at runtime from LBUG_LIB_PATH (the file the
+// build fetched), or from the LBUG_LIBRARY environment variable, so nothing
+// links against it and no rpath, SONAME or import library is involved.
 
 #include <lean/lean.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "lbug.h"
+#include "lbug_dyn.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+#ifndef LBUG_LIB_PATH
+#error "LBUG_LIB_PATH must name the Ladybug shared library"
+#endif
+
+static int g_loaded = 0;
+static char g_load_error[1024] = {0};
+
+// Load the library and resolve every function once. Returns NULL on success,
+// else a message.
+static const char* lbug_load(void) {
+    if (g_loaded) return g_load_error[0] ? g_load_error : NULL;
+    g_loaded = 1;
+    const char* path = getenv("LBUG_LIBRARY");
+    if (!path || !*path) path = LBUG_LIB_PATH;
+#ifdef _WIN32
+    HMODULE h = LoadLibraryA(path);
+    if (!h) {
+        snprintf(g_load_error, sizeof g_load_error, "cannot load Ladybug library %s (error %lu)", path,
+                 (unsigned long)GetLastError());
+        return g_load_error;
+    }
+#define LBUG_RESOLVE(f) p_##f = (__typeof__(p_##f))(void*)GetProcAddress(h, #f);
+#else
+    // RTLD_GLOBAL: Ladybug's extensions (vector, fts) resolve the library's
+    // symbols from the global namespace when Ladybug loads them.
+    void* h = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    if (!h) {
+        snprintf(g_load_error, sizeof g_load_error, "cannot load Ladybug library %s: %s", path, dlerror());
+        return g_load_error;
+    }
+#define LBUG_RESOLVE(f) p_##f = (__typeof__(p_##f))dlsym(h, #f);
+#endif
+    LBUG_DYN_FUNCS(LBUG_RESOLVE)
+#define LBUG_CHECK(f) if (!p_##f) { snprintf(g_load_error, sizeof g_load_error, "Ladybug library %s lacks %s", path, #f); return g_load_error; }
+    LBUG_DYN_FUNCS(LBUG_CHECK)
+    return NULL;
+}
 
 // --- Value constructors exported from Ladybug.Value.Export -----------------
 
@@ -158,6 +208,8 @@ static void value_foreach(void* p, b_lean_obj_arg f) { (void)p; (void)f; }
 // constructors can run before module initialization finishes, so every
 // allocation goes through this.
 static void ensure_classes(void) {
+    const char* err = lbug_load();
+    if (err) lean_internal_panic(err);
     if (!g_value_class) {
         g_db_class = lean_register_external_class(db_finalize, db_foreach);
         g_conn_class = lean_register_external_class(conn_finalize, conn_foreach);
@@ -181,13 +233,21 @@ static value_box* as_value(b_lean_obj_arg o) { return lean_get_external_data(o);
 
 // --- Library info ------------------------------------------------------------
 
+static lean_obj_res io_load_error(const char* err) {
+    return lean_io_result_mk_error(lean_mk_io_user_error(lean_mk_string(err)));
+}
+
 LEAN_EXPORT lean_obj_res lbug_lean_version(lean_obj_arg w) {
     (void)w;
+    const char* err = lbug_load();
+    if (err) return io_load_error(err);
     return io_ok(owned_string(lbug_get_version()));
 }
 
 LEAN_EXPORT lean_obj_res lbug_lean_storage_version(lean_obj_arg w) {
     (void)w;
+    const char* err = lbug_load();
+    if (err) return io_load_error(err);
     return io_ok(lean_box_uint64(lbug_get_storage_version()));
 }
 
@@ -197,6 +257,8 @@ LEAN_EXPORT lean_obj_res lbug_lean_db_open(b_lean_obj_arg path, uint64_t buffer_
                                            uint64_t max_threads, uint8_t read_only,
                                            uint64_t max_db_size, lean_obj_arg w) {
     (void)w;
+    const char* err = lbug_load();
+    if (err) return io_ok(except_error(err));
     ensure_classes();
     lbug_system_config cfg = lbug_default_system_config();
     if (buffer_pool_size > 0) cfg.buffer_pool_size = buffer_pool_size;

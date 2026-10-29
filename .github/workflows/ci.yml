@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the Ladybug library
+        uses: actions/cache@v4
+        with:
+          path: .lake/lbug
+          key: lbug-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lbug.lock') }}
+
+      # Installs elan and the toolchain from lean-toolchain.
+      - uses: leanprover/lean-action@v1
+        with:
+          build: false
+          test: false
+          use-github-cache: true
+
+      - name: Build and test
+        shell: bash
+        run: scripts/ci-test.sh

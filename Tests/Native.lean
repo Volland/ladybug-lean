@@ -26,9 +26,12 @@ private def readBytes (path : System.FilePath) : IO ByteArray := IO.FS.readBinFi
 -- @tg: verifies:: [[openspec:native-library#Storage version check#Incompatible database file]] {level: integration}
 def incompatibleStorage : IO Unit := do
   let path ← freshPath "storage-v39"
-  let gunzip ← IO.Process.spawn
-    { cmd := "sh", args := #["-c", s!"gunzip -c Tests/fixtures/storage-v39.lbug.gz > '{path}'"] }
-  check ((← gunzip.wait) == 0) "gunzip fixture"
+  let unpacked ← try
+      let gunzip ← IO.Process.spawn
+        { cmd := "sh", args := #["-c", s!"gunzip -c Tests/fixtures/storage-v39.lbug.gz > '{path}'"] }
+      pure ((← gunzip.wait) == 0)
+    catch _ => pure false
+  unless unpacked do skipTest "needs sh and gunzip to unpack the fixture"
   let before ← readBytes path
   let e ← expectError (Database.open path) (fun | .storageMismatch .. => true | _ => false) "open"
   match e with

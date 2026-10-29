@@ -73,6 +73,17 @@ structure Column where
 def Column.of (name : String) (α : Type) [CypherType α] : Column :=
   ⟨name, CypherType.colType α, CypherType.nullable α⟩
 
+/-- An expression written to this column. Values for list columns are cast to
+the column type, because an empty list has no element type of its own. -/
+def Column.written (c : Column) (e : Cypher.Core.Expr) : Cypher.Core.Expr :=
+  match c.type, e with
+  | .list _, e | .array .., e => .cast e c.type.ddl
+  -- A struct value becomes a literal with one parameter per field, so a NULL
+  -- field takes its type from the cast instead of being an untyped NULL.
+  | .struct _, .value (.struct fs) => .cast (.structLit (fs.toList.map fun (k, v) => (k, .value v))) c.type.ddl
+  | .struct _, e => .cast e c.type.ddl
+  | _, e => e
+
 /-- A Lean structure stored as a node table. -/
 class NodeTable (α : Type) where
   label : String

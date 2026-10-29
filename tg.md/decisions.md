@@ -118,11 +118,11 @@ date:: 2026-10-29
 
 ## Absolute install name instead of rpath
 
-The fetch step rewrites the downloaded macOS library's install name to its absolute path (then re-signs it ad hoc), so every executable that links it, in this package or a dependent one, loads it without an rpath.
+The fetch step rewrote the downloaded macOS library's install name to its absolute path, so executables loaded it without an rpath. Superseded once Linux and Windows were added.
 
 Rejected: rpath link arguments, because a library's `moreLinkArgs` do not reach dependent executables in Lake.
 
-status:: accepted
+status:: superseded
 date:: 2026-10-29
 
 - motivated_by:: [[constraints#External library linking in Lake]] {weight: primary}
@@ -187,6 +187,40 @@ date:: 2026-10-29
 
 - motivated_by:: [[decisions#Two backends one API]]
 - motivated_by:: [[constraints#Ladybug path semantics]]
+
+## Load Ladybug at runtime
+
+The C shim loads the Ladybug library with `dlopen`/`LoadLibrary` from the absolute path the build fetched (or `LBUG_LIBRARY`) and calls it through pointers typed from `lbug.h`, so nothing links against it.
+
+This avoids rpath, SONAME and import-library issues on every platform, including MinGW linking an MSVC DLL, and works the same in dependent packages.
+
+status:: accepted
+date:: 2026-10-29
+
+- supersedes:: [[decisions#Absolute install name instead of rpath]] {since: "M7", reason: "Linux SONAME and Windows import libraries"}
+- motivated_by:: [[constraints#External library linking in Lake]]
+- motivated_by:: [[constraints#Extensions resolve the library's global symbols]]
+
+## Own generators for property tests
+
+Value round-trip properties use the project's seeded generators and shrinking, as the differential suite does, instead of Plausible.
+
+Lake has no test-only dependencies, so requiring Plausible would make every package that depends on this one fetch it.
+
+status:: accepted
+date:: 2026-10-29
+
+## Column writes are cast to the column type
+
+Values written to list and struct columns are wrapped in `CAST(… AS <column type>)`, struct values become literals with one parameter per field, and empty lists are printed inline as `[]`.
+
+An empty list or a NULL struct field has no type of its own, and Ladybug types parameters from their context.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[constraints#Parameter types come from their context]]
+- motivated_by:: [[constraints#Empty list parameters need an element type]]
 
 ## Spec first then vertical slices
 

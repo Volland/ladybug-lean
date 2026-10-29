@@ -237,6 +237,8 @@ partial def evalExpr (env : Env) : Expr → EvalM Value
   | .value v => return v
   | .null => return .null
   | .name s => return .string s
+  | .cast e _ => evalExpr env e
+  | .structLit fs => return .struct (← fs.toArray.mapM fun (k, e) => do return (k, ← evalExpr env e))
   | .list xs => return .list (← xs.toArray.mapM (evalExpr env))
   | .binop op a b => do
     -- AND/OR short-circuit only for definite results, as 3VL requires both sides otherwise.
@@ -292,7 +294,6 @@ partial def subRows (env : Env) (pats : List Pattern) (cond : Option Expr) : Eva
 
 /-- Every extension of `env` that binds the pattern; relationships are distinct within it. -/
 partial def matchPattern (env : Env) (p : Pattern) : EvalM (Array Env) := do
-  let g ← graph
   let starts ← matchNode env p.start
   starts.flatMapM fun (env', id) => steps env' id p.steps []
 where
@@ -338,7 +339,6 @@ partial def matchNode (env : Env) (np : NodePat) : EvalM (Array (Env × Internal
       if ← nodeMatches env np n evalExpr then return some ((np.var, n.value) :: env, n.id) else return none
 
 partial def bindNode (env : Env) (np : NodePat) (n : Node) : EvalM (Option Env) := do
-  let g ← graph
   match env.lookup np.var with
   | some (.node id ..) => return if id == n.id then some env else none
   | some _ => return none

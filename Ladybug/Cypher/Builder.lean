@@ -191,7 +191,7 @@ def unwind (xs : Expr (Array τ)) : QueryM (Expr τ) := do
   return ⟨.var v⟩
 
 private def propsOf (cols : Array Column) (v : Value) : List (String × Core.Expr) :=
-  cols.toList.map fun c => (c.name, .value ((v.field? c.name).getD .null))
+  cols.toList.map fun c => (c.name, c.written (.value ((v.field? c.name).getD .null)))
 
 /-- `CREATE (n:Label {…})` from a Lean value; returns the new node's variable. -/
 def create [NodeTable α] [ToValue α] [HasVar α V O] (x : α) : QueryM V := do
@@ -217,7 +217,7 @@ def merge [NodeTable α] [ToValue α] [HasVar α V O] (x : α) : QueryM V := do
   QueryM.emit (.merge ⟨⟨v, some (NodeTable.label α), [(key, .value keyVal)]⟩, []⟩)
   let rest := (NodeTable.columns α).toList.filter (·.name != key)
   unless rest.isEmpty do
-    QueryM.emit (.set (rest.map fun c => ⟨.prop (.var v) c.name, .value ((value.field? c.name).getD .null)⟩))
+    QueryM.emit (.set (rest.map fun c => ⟨.prop (.var v) c.name, c.written (.value ((value.field? c.name).getD .null))⟩))
   return HasVar.mkVar α v
 
 /-- `SET target = value`; `target` should be a property expression. -/

@@ -31,11 +31,11 @@ check_update_resolves_latest() {
 check_override() {
   ver=$(cat lbug.lock)
   src=$(ls -d .lake/lbug/"$ver"/*/ | head -1)
-  LBUG_LIB_DIR="$PWD/$src" lake build tests >/dev/null
-  case "$(uname)" in
-    Darwin) otool -L .lake/build/bin/tests | grep -q "/override/" || fail "tests not linked against the override" ;;
-    *) ldd .lake/build/bin/tests | grep -q "/override/" || fail "tests not linked against the override" ;;
-  esac
+  local_dir="$PWD/.lake/test-tmp/local-lbug"
+  rm -rf "$local_dir" && mkdir -p "$local_dir" && cp -R "$src". "$local_dir"
+  out=$(LBUG_LIB_DIR="$local_dir" lake build tests -v 2>&1)
+  if echo "$out" | grep -q "downloading Ladybug"; then fail "the override downloaded the library"; fi
+  strings .lake/build/c/lbug_shim.o | grep -q "test-tmp/local-lbug" || fail "the shim does not load the override"
   .lake/build/bin/tests >/dev/null || fail "tests fail with the override"
   lake build tests >/dev/null
   echo "ok    LBUG_LIB_DIR override is used"

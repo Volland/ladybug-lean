@@ -40,6 +40,9 @@ mutual
 private partial def expr : Expr → PrintM String
   | .var n => return quoteIdent n
   | .prop e k => return (← expr e) ++ "." ++ quoteIdent k
+  -- An empty list has no element type to bind, and no data to protect, so it
+  -- is printed inline; a CAST around it gives it the column's type.
+  | .value (.list #[]) | .value (.array #[]) => return "[]"
   | .value v => addParam v
   | .null => return "NULL"
   | .list xs => return "[" ++ ", ".intercalate (← xs.mapM expr) ++ "]"
@@ -54,6 +57,10 @@ private partial def expr : Expr → PrintM String
   | .exists pats cond => return s!"EXISTS \{ {← subquery pats cond} }"
   | .countSub pats cond => return s!"COUNT \{ {← subquery pats cond} }"
   | .name s => return strLit s
+  | .cast e t => return s!"CAST({← expr e} AS {t})"
+  | .structLit fs => do
+    let parts ← fs.mapM fun (k, e) => return s!"{quoteIdent k}: {← expr e}"
+    return "{" ++ ", ".intercalate parts ++ "}"
 
 private partial def subquery (pats : List Pattern) (cond : Option Expr) : PrintM String := do
   let m := "MATCH " ++ ", ".intercalate (← pats.mapM pattern)

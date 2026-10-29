@@ -16,6 +16,9 @@ structure Test where
 
 def fail {α : Type} (msg : String) : IO α := throw (IO.userError msg)
 
+/-- Skip a test whose prerequisite is missing on this machine; reported, not counted as passed. -/
+def skipTest {α : Type} (reason : String) : IO α := throw (IO.userError s!"SKIP: {reason}")
+
 def check (cond : Bool) (msg : String) : IO Unit := unless cond do fail msg
 
 def assertEq {α : Type} [BEq α] [ToString α] (actual expected : α) (what : String := "value") : IO Unit :=
@@ -48,6 +51,7 @@ def freshPath (name : String) : IO String := do
 def runAll (tests : List Test) : IO UInt32 := do
   let filter := (← IO.getEnv "TEST_FILTER").getD ""
   let mut failed := 0
+  let mut skipped := 0
   let mut ran := 0
   for t in tests do
     unless filter.isEmpty || (t.name.splitOn filter).length > 1 do continue
@@ -56,9 +60,14 @@ def runAll (tests : List Test) : IO UInt32 := do
       t.run
       IO.println s!"  ok    {t.name}"
     catch e =>
-      failed := failed + 1
-      IO.println s!"  FAIL  {t.name}\n        {e}"
-  IO.println s!"{ran - failed}/{ran} passed"
+      let msg := toString e
+      if msg.startsWith "SKIP: " then
+        skipped := skipped + 1
+        IO.println s!"  skip  {t.name}: {(msg.drop 6).toString}"
+      else
+        failed := failed + 1
+        IO.println s!"  FAIL  {t.name}\n        {e}"
+  IO.println s!"{ran - failed - skipped}/{ran} passed, {skipped} skipped"
   return failed.toUInt32
 
 end Tests
