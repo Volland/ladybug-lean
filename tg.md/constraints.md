@@ -127,3 +127,35 @@ Every element of a Ladybug list value must have the same type, so a batch whose 
 source:: Ladybug C API `lbug_value_create_list`; observed with UNWIND batches in 0.22.1
 
 - constrains:: [[decisions#Repository not Hibernate]] {strength: must, note: "batches are harmonized before binding"}
+
+## No CALL subqueries
+
+Ladybug 0.22 parses `EXISTS { }` and `COUNT { }` subqueries but not `CALL { }` subqueries, so the typed language offers the first two only.
+
+source:: Ladybug 0.22.1 parser error on `CALL { … }`
+
+- constrains:: [[decisions#Hybrid typed DSL]] {strength: must, note: "no CALL subquery builder or syntax"}
+
+## Timeouts and interrupts are checked between work units
+
+Ladybug checks a query's timeout and interrupt flag only between units of pipeline work and reports both as "Interrupted.", so a single long unit such as one big UNWIND overruns its timeout.
+
+source:: observed with Ladybug 0.22.1
+
+- constrains:: [[decisions#Runtime monad over ReaderT and ExceptT]] {strength: must, note: "the connection records interrupts to tell them from timeouts"}
+
+## Index procedures cannot be prepared
+
+`CALL CREATE_VECTOR_INDEX` and similar procedures expand to several statements, which Ladybug refuses to prepare, and a `CALL … YIELD` clause cannot be followed directly by WHERE.
+
+source:: Ladybug 0.22.1 errors "We do not support prepare multiple statements" and "expected rule oC_SingleQuery"
+
+- constrains:: [[decisions#Phantom types over an untyped core]] {strength: must, note: "queries without parameters run unprepared; WHERE after CALL gets WITH *"}
+
+## Path variables include endpoints
+
+In Ladybug a path variable `p = (a)-[:R*1..3]->(b)` holds every node on the path, while a relationship variable `[e:R*1..3]` holds only the intermediate nodes.
+
+source:: observed with Ladybug 0.22.1
+
+- constrains:: [[decisions#Phantom types over an untyped core]] {strength: must, note: "variable-length matches bind a path variable"}

@@ -1,5 +1,7 @@
 import Ladybug.Cypher.Syntax
 import Ladybug.Schema.Command
+import Ladybug.Cypher.Advanced
+import Ladybug.Search
 
 /-!
 # `cypher%` elaboration
@@ -89,6 +91,154 @@ private def unsupported {α : Type} (stx : Syntax) (what : String) : M α :=
 private def isKeyword (stx : Syntax) (kw : String) : Bool :=
   stx.isIdent && (identStr stx).toLower == kw
 
+/-! ## Patterns -/
+
+/-- Parts of `(var:Label {props})`. -/
+private structure NodeParts where
+  ref : Syntax
+  var : Option String
+  label : Option Syntax
+  props : Syntax
+
+private def nodeParts (n : Syntax) : NodeParts :=
+  { ref := n, var := n[1].getOptional?.map identStr,
+    label := if n[2].getNumArgs == 2 then some n[2][1] else none, props := n[3] }
+
+private inductive Dir where | out | inc | both
+
+/-- Parts of one step: direction, `[var:Label*range {props}]`, end node. -/
+private def stepParts (s : Syntax) : Dir × Syntax × Syntax :=
+  let inner := s[0]
+  let dir := match inner.getKind with
+    | ``cypherIn => Dir.inc
+    | ``cypherBoth => Dir.both
+    | _ => Dir.out
+  (dir, inner[1], inner[3])
+
+private def dirFn : Dir → Name
+  | .out => ``Ladybug.out | .inc => ``Ladybug.inc | .both => ``Ladybug.both
+
+private def dirTerm : Dir → M Term
+  | .out => `(Ladybug.Cypher.Core.Dir.out)
+  | .inc => `(Ladybug.Cypher.Core.Dir.inc)
+  | .both => `(Ladybug.Cypher.Core.Dir.both)
+
+private def matchFn (optional : Bool) : Ident :=
+  mkIdent (if optional then ``Ladybug.optMatch else ``Ladybug.match_)
+
+/-- The bound node variable `(v)` with no label or properties, if `n` is one. -/
+private def boundNode? (n : NodeParts) : M (Option VarInfo) := do
+  let some v := n.var | return none
+  let some info ← lookup? v | return none
+  if n.label.isSome || !n.props.isNone then
+    throwErrorAt n.ref "variable '{v}' is already bound; refer to it as ({v})"
+  match info.kind with
+  | .node _ => return some info
+  | _ => throwErrorAt n.ref "'{v}' is not a node variable"
+
+private def noProps (n : NodeParts) : M Unit := do
+  unless n.props.isNone do
+    throwErrorAt n.props "property maps in MATCH are not supported; filter with WHERE"
+
+/-- The end node's table: its label, or the relationship's endpoint. -/
+private def endTable (dst : NodeParts) (r : Registry.TableEntry) (dir : Dir) : M Registry.TableEntry := do
+  match dst.label with
+  | some l => table l false
+  | none =>
+    let inferred := match dir with | .inc => r.src | _ => r.dst
+    let some name := inferred | throwErrorAt dst.ref "a new node needs a label"
+    let some t := Registry.find? (← getEnv) name | throwErrorAt dst.ref "a new node needs a label"
+    pure t
+
+-- @tg: implements:: [[openspec:cypher-syntax#Advanced clauses in syntax]]
+/-- `*min..max` with its mode, from a `cypherRange` node. -/
+private def rangeOf (rng : Syntax) : M (Nat × Nat × Option Name) := do
+  let all := !rng[1].isNone
+  let shortest := !rng[2].isNone
+  let lo := (rng[3].getOptional?.bind (·.isNatLit?)).getD 1
+  let hi? := if rng[4].getNumArgs == 2 then rng[4][1].getOptional?.bind (·.isNatLit?) else none
+  let some hi := hi? | throwErrorAt rng "a variable-length pattern needs an upper bound, e.g. *1..3"
+  if all && !shortest then throwErrorAt rng "ALL must be followed by SHORTEST"
+  let fn := if shortest then some (if all then ``Ladybug.allShortestPaths else ``Ladybug.shortestPath) else none
+  if fn.isSome && lo != 1 then throwErrorAt rng "shortest paths start at length 1"
+  return (lo, hi, fn)
+
+private def matchPattern (optional : Bool) (pat : Syntax) : M Unit := withRef pat do
+  let pathVar := if pat[0].getNumArgs == 2 then some (identStr pat[0][0]) else none
+  let start := nodeParts pat[1]
+  let steps := pat[2].getArgs
+  let mut cur ← match ← boundNode? start with
+    | some info => pure info
+    | none => do
+      noProps start
+      let some lbl := start.label | throwErrorAt start.ref "a new node needs a label, e.g. (p:Person)"
+      let t ← table lbl false
+      let id ← fresh (start.var.getD "n")
+      let f := matchFn optional
+      let rhs ← `($f (Ladybug.node $(tableIdent t)))
+      emit (← `(doElem| let $id ← $rhs:term))
+      let info : VarInfo := { lean := id, kind := .node t, optional }
+      if let some v := start.var then bind v info
+      pure info
+  let ranged := steps.any fun st => !(stepParts st).2.1[4].isNone
+  if pathVar.isSome && !ranged then
+    throwErrorAt pat "a path variable needs a variable-length relationship, e.g. p = (a)-[:R*1..3]->(b)"
+  if ranged && steps.size != 1 then
+    throwErrorAt pat "a variable-length relationship must be the only step of its pattern"
+  for step in steps do
+    let (dir, relStx, endStx) := stepParts step
+    let relVar := relStx[1].getOptional?.map identStr
+    let r ← table relStx[3] true
+    unless relStx[5].isNone do throwErrorAt relStx[5] "property maps in MATCH are not supported; filter with WHERE"
+    let dst := nodeParts endStx
+    let src := cur.lean
+    if !relStx[4].isNone then
+      if optional then throwErrorAt relStx[4] "OPTIONAL MATCH of a variable-length pattern is not supported"
+      let (lo, hi, fn?) ← rangeOf relStx[4][0]
+      let pathId ← fresh (pathVar.getD "p")
+      let (dstTerm, dstInfo?) ← match ← boundNode? dst with
+        | some info => pure ((info.lean : Term), some info)
+        | none => do
+          noProps dst
+          let t ← endTable dst r dir
+          pure (← `(Ladybug.node $(tableIdent t)), none)
+      let d ← dirTerm dir
+      let rhs ← match fn? with
+        | some fn => `($(mkIdent fn) $src $(tableIdent r) $dstTerm (max := $(quote hi)) (dir := $d))
+        | none => `(Ladybug.matchPaths $src $(tableIdent r) $dstTerm (min := $(quote lo)) (max := $(quote hi)) (dir := $d))
+      let dstId ← fresh (dst.var.getD "n")
+      emit (← withRef step `(doElem| let ($pathId, $dstId) ← $rhs:term))
+      for name in [pathVar, relVar].filterMap id do bind name { lean := pathId, kind := .expr }
+      let info ← match dstInfo? with
+        | some info => pure info
+        | none => do
+          let info : VarInfo := { lean := dstId, kind := .node (← endTable dst r dir) }
+          if let some v := dst.var then bind v info
+          pure info
+      cur := info
+    else
+      let relId ← fresh (relVar.getD "r")
+      let f := matchFn optional
+      let d := mkIdent (dirFn dir)
+      let next ← match ← boundNode? dst with
+        | some info => do
+          let p ← `($d $src $(tableIdent r) $(info.lean))
+          let rhs ← `($f $p)
+          emit (← withRef step `(doElem| let $relId ← $rhs:term))
+          pure info
+        | none => do
+          noProps dst
+          let t ← endTable dst r dir
+          let id ← fresh (dst.var.getD "n")
+          let p ← `($d $src $(tableIdent r) (Ladybug.node $(tableIdent t)))
+          let rhs ← `($f $p)
+          emit (← withRef step `(doElem| let ($relId, $id) ← $rhs:term))
+          let info : VarInfo := { lean := id, kind := .node t, optional }
+          if let some v := dst.var then bind v info
+          pure info
+      if let some v := relVar then bind v { lean := relId, kind := .rel r, optional }
+      cur := next
+
 /-! ## Expressions -/
 
 /-- `var` or `var.prop` in an expression. -/
@@ -133,8 +283,12 @@ private def unaryFns : List (String × Name) :=
 private def antiquotParam? (stx : Syntax) : Option Term :=
   if stx.isAntiquot then some ⟨stx.getAntiquotTerm⟩ else none
 
+mutual
+
 partial def expr (stx : Syntax) : M Term := withRef stx do
   if let some t := antiquotParam? stx then return ← `(Ladybug.lit $t)
+  if stx.getKind == ``existsE || stx.getKind == ``countSubE then
+    return ← subquery stx
   let k := stx.getKind
   if let some f := binFn k then
     let a ← expr stx[0]
@@ -178,6 +332,24 @@ partial def expr (stx : Syntax) : M Term := withRef stx do
     | _, _ => unsupported stx[0] s!"function {fnName} with {args.size} arguments"
   | _ => unsupported stx "this expression"
 
+/-- `EXISTS { MATCH … WHERE … }` / `COUNT { … }`: the body is translated in a
+nested scope (its variables stay local) and run through `exists_`/`countSub`. -/
+partial def subquery (stx : Syntax) : M Term := withRef stx do
+  let saved ← get
+  modify fun s => { s with elems := #[] }
+  for p in stx[3].getSepArgs do matchPattern false p
+  if stx[4].getNumArgs == 2 then emit (← `(doElem| Ladybug.where_ $(← expr stx[4][1])))
+  let inner := (← get).elems.push (← `(doElem| pure ()))
+  modify fun s => { saved with next := s.next }
+  let items ← inner.mapM fun e => `(Lean.Parser.Term.doSeqItem| $e:doElem)
+  let fn := mkIdent (if stx.getKind == ``existsE then ``Ladybug.exists_ else ``Ladybug.countSub)
+  let id ← fresh "sub"
+  let rhs ← `($fn (do $items*))
+  emit (← `(doElem| let $id ← $rhs:term))
+  return id
+
+end
+
 /-! ## Values for CREATE and MERGE -/
 
 /-- A Lean term for a literal property value. -/
@@ -212,109 +384,10 @@ private def structValue (t : Registry.TableEntry) (props : Syntax) (ref : Syntax
       if c.nullable then `(none) else throwErrorAt ref "missing property '{c.name}' of table {t.label}"
   `($(mkIdent (t.declName ++ `mk)) $args*)
 
-/-! ## Patterns -/
-
-/-- Parts of `(var:Label {props})`. -/
-private structure NodeParts where
-  ref : Syntax
-  var : Option String
-  label : Option Syntax
-  props : Syntax
-
-private def nodeParts (n : Syntax) : NodeParts :=
-  { ref := n, var := n[1].getOptional?.map identStr,
-    label := if n[2].getNumArgs == 2 then some n[2][1] else none, props := n[3] }
-
-private inductive Dir where | out | inc | both
-
-/-- Parts of one step: direction, `[var:Label]`, end node. -/
-private def stepParts (s : Syntax) : Dir × Syntax × Syntax :=
-  let inner := s[0]
-  let dir := match inner.getKind with
-    | ``cypherIn => Dir.inc
-    | ``cypherBoth => Dir.both
-    | _ => Dir.out
-  (dir, inner[1], inner[3])
-
-private def dirFn : Dir → Name
-  | .out => ``Ladybug.out | .inc => ``Ladybug.inc | .both => ``Ladybug.both
-
-private def matchFn (optional : Bool) : Ident :=
-  mkIdent (if optional then ``Ladybug.optMatch else ``Ladybug.match_)
-
-/-- The bound node variable `(v)` with no label or properties, if `n` is one. -/
-private def boundNode? (n : NodeParts) : M (Option VarInfo) := do
-  let some v := n.var | return none
-  let some info ← lookup? v | return none
-  if n.label.isSome || !n.props.isNone then
-    throwErrorAt n.ref "variable '{v}' is already bound; refer to it as ({v})"
-  match info.kind with
-  | .node _ => return some info
-  | _ => throwErrorAt n.ref "'{v}' is not a node variable"
-
-private def noProps (n : NodeParts) : M Unit := do
-  unless n.props.isNone do
-    throwErrorAt n.props "property maps in MATCH are not supported; filter with WHERE"
-
-private def matchPattern (optional : Bool) (pat : Syntax) : M Unit := withRef pat do
-  let start := nodeParts pat[0]
-  let mut cur ← match ← boundNode? start with
-    | some info => pure info
-    | none => do
-      noProps start
-      let some lbl := start.label | throwErrorAt start.ref "a new node needs a label, e.g. (p:Person)"
-      let t ← table lbl false
-      let id ← fresh (start.var.getD "n")
-      let f := matchFn optional
-      let rhs ← `($f (Ladybug.node $(tableIdent t)))
-      emit (← `(doElem| let $id ← $rhs:term))
-      let info : VarInfo := { lean := id, kind := .node t, optional }
-      if let some v := start.var then bind v info
-      pure info
-  for step in pat[1].getArgs do
-    let (dir, relStx, endStx) := stepParts step
-    let relVar := relStx[1].getOptional?.map identStr
-    let r ← table relStx[3] true
-    unless relStx[4].isNone do throwErrorAt relStx[4] "property maps in MATCH are not supported; filter with WHERE"
-    let dst := nodeParts endStx
-    let relId ← fresh (relVar.getD "r")
-    let src := cur.lean
-    let pattern ← match ← boundNode? dst with
-      | some info => do
-        let d := mkIdent (dirFn dir)
-        let p ← `($d $src $(tableIdent r) $(info.lean))
-        let f := matchFn optional
-        let rhs ← `($f $p)
-        emit (← withRef step `(doElem| let $relId ← $rhs:term))
-        pure info
-      | none => do
-        noProps dst
-        let lbl ← match dst.label with
-          | some l => pure (some l)
-          | none => pure none
-        let t ← match lbl with
-          | some l => table l false
-          | none =>
-            -- The end node's table follows from the relationship's endpoints.
-            let inferred := match dir with | .inc => r.src | _ => r.dst
-            let some name := inferred | throwErrorAt dst.ref "a new node needs a label"
-            let some t := Registry.find? (← getEnv) name | throwErrorAt dst.ref "a new node needs a label"
-            pure t
-        let id ← fresh (dst.var.getD "n")
-        let d := mkIdent (dirFn dir)
-        let p ← `($d $src $(tableIdent r) (Ladybug.node $(tableIdent t)))
-        let f := matchFn optional
-        let rhs ← `($f $p)
-        emit (← withRef step `(doElem| let ($relId, $id) ← $rhs:term))
-        let info : VarInfo := { lean := id, kind := .node t, optional }
-        if let some v := dst.var then bind v info
-        pure info
-    if let some v := relVar then bind v { lean := relId, kind := .rel r, optional }
-    cur := pattern
-
 private def createPattern (merge : Bool) (pat : Syntax) : M Unit := withRef pat do
-  let start := nodeParts pat[0]
-  let steps := pat[1].getArgs
+  unless pat[0].isNone do throwErrorAt pat[0] "a path variable is only allowed in MATCH"
+  let start := nodeParts pat[1]
+  let steps := pat[2].getArgs
   if steps.isEmpty then
     let some lbl := start.label | throwErrorAt start.ref "CREATE needs a label, e.g. (p:Person \{…})"
     let t ← table lbl false
@@ -331,7 +404,8 @@ private def createPattern (merge : Bool) (pat : Syntax) : M Unit := withRef pat 
     let some a ← boundNode? start | throwErrorAt start.ref "CREATE of a relationship needs bound end nodes"
     let some b ← boundNode? (nodeParts endStx) | throwErrorAt endStx "CREATE of a relationship needs bound end nodes"
     let r ← table relStx[3] true
-    let value ← structValue r relStx[4] relStx
+    unless relStx[4].isNone do throwErrorAt relStx[4] "CREATE takes a single relationship, not a range"
+    let value ← structValue r relStx[5] relStx
     let id ← fresh ((relStx[1].getOptional?.map identStr).getD "r")
     let (x, y) ← match dir with
       | .out => pure (a, b)
@@ -416,14 +490,41 @@ private def clause (c : Syntax) (isLast : Bool) : M Unit := withRef c do
     modifiers c[3]
     let distinct := !c[1].isNone
     emit (← `(doElem| Ladybug.return_ $(← tuple (items.map (·.1))) (distinct := $(quote distinct))))
+  | ``callC =>
+    let proc := (identStr c[1]).toLower
+    let args := c[3].getSepArgs
+    let (fn, outs) ← match proc with
+      | "query_vector_index" => pure (``Ladybug.vectorSearch, ("node", "distance"))
+      | "query_fts_index" => pure (``Ladybug.ftsSearch, ("node", "score"))
+      | _ => unsupported c[1] s!"procedure {identStr c[1]}"
+    let expected := if proc == "query_vector_index" then 4 else 3
+    unless args.size == expected do throwErrorAt c "{identStr c[1]} takes {expected} arguments"
+    let tableName ← match args[0]!.getKind with
+      | ``strLit => pure (args[0]![0].isStrLit?.getD "")
+      | _ => throwErrorAt args[0]! "the table must be a string literal naming a node table"
+    let t ← match Registry.find? (← getEnv) tableName with
+      | some t => if t.isRel then throwErrorAt args[0]! "'{tableName}' is not a node table" else pure t
+      | none => throwErrorAt args[0]! "unknown node label '{tableName}'"
+    let rest ← (args.extract 1 args.size).mapM litValue
+    let rhs ← `($(mkIdent fn) $(tableIdent t) $rest*)
+    let names := if c[5].getNumArgs == 2 then c[5][1].getSepArgs.map fun y =>
+        (identStr y[0], if y[1].getNumArgs == 2 then identStr y[1][1] else identStr y[0]) else
+      #[(outs.1, outs.1), (outs.2, outs.2)]
+    let nodeName := (names.find? (·.1.toLower == outs.1)).map (·.2)
+    let valName := (names.find? (·.1.toLower == outs.2)).map (·.2)
+    let nodeId ← fresh (nodeName.getD "node")
+    let valId ← fresh (valName.getD outs.2)
+    emit (← `(doElem| let ($nodeId, $valId) ← $rhs:term))
+    if let some n := nodeName then bind n { lean := nodeId, kind := .node t }
+    if let some n := valName then bind n { lean := valId, kind := .expr }
   | _ => unsupported c "this clause"
 
 -- @tg: implements:: [[openspec:cypher-syntax#Same AST as the builder]]
 -- @tg: implements:: [[openspec:cypher-syntax#Schema-checked elaboration]]
 -- @tg: implements:: [[openspec:cypher-syntax#Located errors]]
 -- @tg: implements:: [[openspec:cypher-syntax#Lean values as parameters]]
-@[term_elab Ladybug.Cypher.Syntax.cypherTerm] def elabCypher : TermElab := fun stx expectedType? => do
-  let clauses := #[stx[1]] ++ stx[2].getArgs
+/-- One query part (no UNION inside) as a `query`/`stmt` term. -/
+private def part (clauses : Array Syntax) : TermElabM Term := do
   let returns := clauses.back?.any (·.getKind == ``returnC)
   let (_, st) ← (clauses.size.fold (init := pure ()) fun i _ acc => do
       acc
@@ -432,7 +533,27 @@ private def clause (c : Syntax) (isLast : Bool) : M Unit := withRef c do
   let unit ← `(doElem| pure ())
   let elems := if returns then elems else elems.push unit
   let items ← elems.mapM fun e => `(Lean.Parser.Term.doSeqItem| $e:doElem)
-  let body ← if returns then `(Ladybug.query (do $items*)) else `(Ladybug.stmt (do $items*))
+  if returns then `(Ladybug.query (do $items*)) else `(Ladybug.stmt (do $items*))
+
+@[term_elab Ladybug.Cypher.Syntax.cypherTerm] def elabCypher : TermElab := fun stx expectedType? => do
+  let clauses := #[stx[1]] ++ stx[2].getArgs
+  -- Split at UNION markers; every part is its own scope.
+  let mut parts : Array (Array Syntax) := #[#[]]
+  let mut unions : Array (Syntax × Bool) := #[]
+  for c in clauses do
+    if c.getKind == ``unionC then
+      unions := unions.push (c, !c[1].isNone)
+      parts := parts.push #[]
+    else
+      parts := parts.modify (parts.size - 1) (·.push c)
+  for (c, _) in unions do
+    if parts.any (·.isEmpty) then throwErrorAt c "UNION needs a query on both sides"
+  let mut body ← part parts[0]!
+  for h : i in [0:unions.size] do
+    let (c, all) := unions[i]
+    let rhs ← part parts[i + 1]!
+    let fn := mkIdent (if all then ``Ladybug.Query.unionAll else ``Ladybug.Query.union)
+    body ← withRef c `($fn $body $rhs)
   withMacroExpansion stx body <| elabTerm body expectedType?
 
 end Ladybug.Cypher.Elab

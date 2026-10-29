@@ -740,3 +740,17 @@ LEAN_EXPORT lean_obj_res lbug_lean_nv_map(b_lean_obj_arg keys, b_lean_obj_arg va
     if (st != LbugSuccess) return except_error("map keys and values must each have one type");
     return except_ok(wrap_value(out));
 }
+
+// --- Timeouts and interruption -----------------------------------------------------
+
+LEAN_EXPORT lean_obj_res lbug_lean_conn_set_timeout(b_lean_obj_arg conn, uint64_t ms, lean_obj_arg w) {
+    (void)w;
+    lbug_connection_set_query_timeout(&as_conn(conn)->conn, ms);
+    return io_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lbug_lean_conn_interrupt(b_lean_obj_arg conn, lean_obj_arg w) {
+    (void)w;
+    lbug_connection_interrupt(&as_conn(conn)->conn);
+    return io_ok(lean_box(0));
+}

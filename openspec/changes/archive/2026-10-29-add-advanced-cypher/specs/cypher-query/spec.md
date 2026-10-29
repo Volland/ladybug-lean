@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Variable-length paths
-The builder SHALL match relationship patterns repeated between a lower and an upper bound (`*min..max`) in any direction, and SHALL bind the matched path to a variable of a typed path whose nodes and relationships decode to the declared structures. The language SHALL provide `length`, `nodes` and `rels` on paths. A pattern with no upper bound SHALL be rejected at compile time, because Ladybug requires one.
+The builder SHALL match relationship patterns repeated between a lower and an upper bound (`*min..max`) in any direction, and SHALL bind the matched path to a variable of a typed path whose nodes and relationships decode to the declared structures. The language SHALL provide `length`, `nodes` and `rels` on paths. A pattern with no upper bound SHALL be rejected at compile time, so that every path query terminates on every backend (Ladybug would otherwise apply an implicit bound of 30).
 
 #### Scenario: Friends within three hops
 - **WHEN** persons form the chain 1-Knows->2-Knows->3-Knows->4 and the persons reachable from 1 in 1 to 2 hops are returned
 - **THEN** persons 2 and 3 are returned
 
 #### Scenario: Path decoding
-- **WHEN** the path from 1 to 3 is returned
+- **WHEN** the path from 1 to 3 is bound to a path variable and returned
 - **THEN** it decodes to a path with nodes `[1, 2, 3]` as `Person` values and two `Knows` relationships, and `length` is 2
 
 #### Scenario: Unbounded pattern rejected
@@ -27,7 +27,7 @@ The builder SHALL match the shortest path and all shortest paths between two var
 - **THEN** both length-2 paths are returned
 
 ### Requirement: Subqueries
-The language SHALL support `EXISTS { pattern [WHERE …] }` as an `Expr Bool`, `COUNT { pattern [WHERE …] }` as an `Expr Int64`, and `CALL { … }` subqueries whose returned variables are in scope afterwards, with the subquery able to reference outer variables.
+The language SHALL support `EXISTS { MATCH pattern [WHERE …] }` as an `Expr Bool` and `COUNT { MATCH pattern [WHERE …] }` as an `Expr Int64`, whose patterns and predicates may reference outer variables. `CALL { … }` subqueries are not provided, because Ladybug does not support them.
 
 #### Scenario: Exists filter
 - **WHEN** persons are filtered by `EXISTS { (p)-[:WorksAt]->(:Company) }`

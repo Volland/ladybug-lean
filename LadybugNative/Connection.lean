@@ -65,10 +65,14 @@ structure Connection where
   inTx : IO.Ref Bool
   /-- Prepared statements of typed queries, by query text. -/
   stmtCache : IO.Ref (Std.HashMap String FFI.Prepared)
+  /-- Extensions loaded on this connection. -/
+  extensions : IO.Ref (Array String)
+  /-- Set by `Connection.interrupt`, to tell an interrupt from a timeout. -/
+  interrupted : IO.Ref Bool
 
 def Database.connect (db : Database) : LbugIO Connection := do
   match ← FFI.connOpen db.raw with
-  | .ok raw => return ⟨raw, db, ← IO.mkRef false, ← IO.mkRef {}⟩
+  | .ok raw => return ⟨raw, db, ← IO.mkRef false, ← IO.mkRef {}, ← IO.mkRef #[], ← IO.mkRef false⟩
   | .error msg => throw (.open msg)
 
 /-- All rows of one statement's result. -/
@@ -94,6 +98,7 @@ private def queryError (msg : String) : Error :=
   | some p => .bind p msg
   | none =>
     if contains msg "duplicated primary key" || contains msg "has connected edges" then .constraint msg
+    else if msg == "Interrupted." then .interrupted msg
     else .query msg
 
 private partial def drain (r : FFI.Result) : LbugIO ResultSet := do
@@ -281,6 +286,36 @@ def lbugWithTx {α : Type} (mode : TxMode) (body : LbugM α) : LbugM α := fun c
     match ← (c.exec "COMMIT").run with
     | .ok () => c.inTx.set false; return .ok a
     | .error e => rollback; return .error (.transaction e.message)
+
+/-! ## Extensions, timeouts and interruption -/
+
+/-- Load a Ladybug extension (`vector`, `fts`, …) on this connection, installing
+it first if it is not installed. -/
+def loadExtension (name : String) : LbugM Unit := do
+  let c ← read
+  if (← c.extensions.get).contains name then return
+  try exec s!"LOAD {name}" catch _ => exec s!"INSTALL {name}; LOAD {name}"
+  c.extensions.modify (·.push name)
+
+/-- Interrupt the query running on this connection, from another task. The
+query fails with `.interrupted` once Ladybug reaches its next unit of work. -/
+def Connection.interrupt (c : Connection) : IO Unit := do
+  c.interrupted.set true
+  FFI.connInterrupt c.raw
+
+-- @tg: implements:: [[openspec:native-connection#Timeouts and interruption]]
+/-- Run `body` with a query timeout. A query that exceeds it fails with
+`.timeout`; Ladybug checks the timeout between units of work, so a query can
+run somewhat longer than `ms`. -/
+def withTimeout {α : Type} (ms : Nat) (body : LbugM α) : LbugM α := fun c => ExceptT.mk do
+  c.interrupted.set false
+  FFI.connSetTimeout c.raw (UInt64.ofNat ms)
+  let res ← try (body c).run finally FFI.connSetTimeout c.raw 0
+  match res with
+  | .error (.interrupted msg) =>
+    if ← c.interrupted.get then return .error (.interrupted msg)
+    return .error (.timeout s!"query exceeded {ms} ms")
+  | r => return r
 
 /-! ## Entry points -/
 

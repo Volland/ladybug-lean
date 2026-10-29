@@ -1,4 +1,5 @@
 import LadybugNative.Connection
+import Ladybug.Search
 
 /-!
 # The native graph backend
@@ -20,8 +21,12 @@ def Connection.cachedPrepare (c : Connection) (text : String) : LbugIO FFI.Prepa
 def Connection.cachedStatements (c : Connection) : IO Nat := return (← c.stmtCache.get).size
 
 private def runCore (core : Cypher.Core.Query) : LbugM ResultSet := do
+  for ext in core.extensions do loadExtension ext
   let c ← read
   let (text, params) := Cypher.print core
+  -- Some statements cannot be prepared (index procedures expand to several
+  -- statements), so a query without parameters is run directly.
+  if params.isEmpty then return (← c.queryAll text).back?.getD default
   executeRaw c.raw (← c.cachedPrepare text) params
 
 private def decodeRows {α : Type} (decode : Row → Except Error α) (rs : ResultSet) : LbugM (Array α) :=
@@ -103,6 +108,7 @@ def Repo.copyRels (ρ : Type) {σ τ : Type} [RelTable ρ σ τ] (path : String)
   copyInto (RelTable.label ρ) path
 
 -- @tg: implements:: [[openspec:graph-monad#Native backend]]
+-- @tg: implements:: [[openspec:graph-search#Extensions]]
 instance : MonadGraph LbugM where
   runQuery q := do decodeRows q.decode (← runCore q.core)
   runStmt s := discard (runCore s.core)

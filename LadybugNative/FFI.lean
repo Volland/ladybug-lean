@@ -56,6 +56,12 @@ opaque stmtBind (p : @& Prepared) (name : @& String) (v : @& NValue) : IO (Excep
 @[extern "lbug_lean_conn_execute"]
 opaque connExecute (c : @& Connection) (p : @& Prepared) : IO (Except String Result)
 
+/-- Set the timeout of later queries on this connection, in milliseconds; 0 disables it. -/
+@[extern "lbug_lean_conn_set_timeout"] opaque connSetTimeout (c : @& Connection) (ms : UInt64) : IO Unit
+
+/-- Interrupt the query running on this connection, from another task. -/
+@[extern "lbug_lean_conn_interrupt"] opaque connInterrupt (c : @& Connection) : IO Unit
+
 @[extern "lbug_lean_result_columns"] opaque resultColumns (r : @& Result) : IO (Array String)
 
 /-- The next row, copied out of the native result, or `none` at the end. -/

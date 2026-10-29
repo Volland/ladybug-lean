@@ -40,6 +40,13 @@ syntax kwDelete := &"DELETE" <|> &"delete" <|> &"Delete"
 syntax kwDetach := &"DETACH" <|> &"detach" <|> &"Detach"
 syntax kwNot := &"NOT" <|> &"not" <|> &"Not"
 syntax kwNull := &"NULL" <|> &"null" <|> &"Null"
+syntax kwExists := &"EXISTS" <|> &"exists" <|> &"Exists"
+syntax kwCount := &"COUNT" <|> &"count" <|> &"Count"
+syntax kwUnion := &"UNION" <|> &"union" <|> &"Union"
+syntax kwAll := &"ALL" <|> &"all" <|> &"All"
+syntax kwShortest := &"SHORTEST" <|> &"shortest" <|> &"Shortest"
+syntax kwCall := &"CALL" <|> &"call" <|> &"Call"
+syntax kwYield := &"YIELD" <|> &"yield" <|> &"Yield"
 
 /-! ## Expressions -/
 
@@ -92,13 +99,21 @@ syntax cypherProp := ident ": " cypherExpr
 syntax cypherProps := "{" cypherProp,* "}"
 /-- `(var:Label {props})`; every part is optional. -/
 syntax cypherNode := "(" (ident)? (":" ident)? (cypherProps)? ")"
-/-- `[var:Label {props}]`. -/
-syntax cypherRel := "[" (ident)? ":" ident (cypherProps)? "]"
+/-- `*min..max`, `* SHORTEST 1..max` or `* ALL SHORTEST 1..max` after a relationship label. -/
+syntax cypherRange := "*" (kwAll)? (kwShortest)? (num)? (".." (num)?)?
+/-- `[var:Label*range {props}]`. -/
+syntax cypherRel := "[" (ident)? ":" ident (cypherRange)? (cypherProps)? "]"
 syntax cypherOut := "-" cypherRel "->" cypherNode
 syntax cypherIn := "<-" cypherRel "-" cypherNode
 syntax cypherBoth := "-" cypherRel "-" cypherNode
 syntax cypherStep := atomic(cypherOut) <|> cypherIn <|> cypherBoth
-syntax cypherPattern := cypherNode (cypherStep)*
+/-- A pattern, optionally bound to a path variable: `p = (a)-[:R*1..3]->(b)`. -/
+syntax cypherPattern := (atomic(ident " = "))? cypherNode (cypherStep)*
+
+/-- `EXISTS { MATCH pattern WHERE cond }`. -/
+syntax:max (name := existsE) kwExists "{" kwMatch cypherPattern,+ (kwWhere cypherExpr)? "}" : cypherExpr
+/-- `COUNT { MATCH pattern WHERE cond }`. -/
+syntax:max (name := countSubE) kwCount "{" kwMatch cypherPattern,+ (kwWhere cypherExpr)? "}" : cypherExpr
 
 /-! ## Clauses -/
 
@@ -121,6 +136,11 @@ syntax (name := mergeC) kwMerge cypherPattern : cypherClause
 syntax (name := setC) kwSet cypherSetItem,+ : cypherClause
 syntax (name := detachDeleteC) kwDetach kwDelete ident,+ : cypherClause
 syntax (name := deleteC) kwDelete ident,+ : cypherClause
+syntax cypherYield := ident (kwAs ident)?
+/-- `CALL QUERY_VECTOR_INDEX("Table", "index", $q, k) YIELD node AS n, distance AS d`,
+and `QUERY_FTS_INDEX` likewise. -/
+syntax (name := callC) kwCall ident noWs "(" cypherExpr,* ")" (kwYield cypherYield,+)? : cypherClause
+syntax (name := unionC) kwUnion (kwAll)? : cypherClause
 
 -- @tg: implements:: [[openspec:cypher-syntax#Embedded Cypher]]
 /-- Typed Cypher text: a `Query α` when it ends in RETURN, otherwise a `Statement`. -/

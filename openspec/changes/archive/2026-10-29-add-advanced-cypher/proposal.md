@@ -5,7 +5,7 @@ Graph and agent-memory workloads need more than fixed-length patterns: they foll
 ## What Changes
 
 - Variable-length relationship patterns with bounds, and shortest / all-shortest paths, returning typed path values.
-- Subqueries: `EXISTS { }`, `COUNT { }` and `CALL { }`.
+- Subqueries: `EXISTS { }` and `COUNT { }` (Ladybug has no `CALL { }` subqueries).
 - `UNION` and `UNION ALL` of queries with the same result type.
 - Fixed-dimension embedding columns, vector index creation and nearest-neighbour queries.
 - Full-text index creation and queries.
@@ -18,12 +18,12 @@ Graph and agent-memory workloads need more than fixed-length patterns: they foll
 
 ### Modified Capabilities
 
-- `cypher-query`: adds variable-length paths, shortest paths, subqueries and UNION.
+- `cypher-query`: adds variable-length paths, shortest paths, EXISTS/COUNT subqueries and UNION.
 - `cypher-syntax`: adds the same constructs to `cypher%`.
 - `native-connection`: adds query timeouts and interruption.
 
 ## Impact
 
-- New modules: `Ladybug/Cypher/Path.lean`, `Ladybug/Cypher/Subquery.lean`, `Ladybug/Search.lean`; extensions to `Ladybug/Cypher/Core.lean`, `Print.lean`, `Syntax.lean` and `Elab.lean`; `Ladybug/Native.lean` gains timeouts and interruption.
+- New modules: `Ladybug/Cypher/Advanced.lean`, `Ladybug/Search.lean`; extensions to `Ladybug/Cypher/Core.lean`, `Print.lean`, `Syntax.lean` and `Elab.lean`; `LadybugNative/Connection.lean` gains extensions, timeouts and interruption.
 - Depends on [[openspec:cypher-query#Query builder]] and [[openspec:cypher-syntax#Embedded Cypher]].
 - Requirements added: [[openspec:cypher-query#Variable-length paths]], [[openspec:cypher-query#Shortest paths]], [[openspec:cypher-query#Subqueries]], [[openspec:cypher-query#Union]], [[openspec:cypher-syntax#Advanced clauses in syntax]], [[openspec:graph-search#Embedding columns]], [[openspec:graph-search#Vector index]], [[openspec:graph-search#Full-text index]], [[openspec:graph-search#Extensions]], [[openspec:native-connection#Timeouts and interruption]].

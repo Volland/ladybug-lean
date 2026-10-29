@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Advanced clauses in syntax
-`cypher%` SHALL accept variable-length and shortest-path patterns, `EXISTS`/`COUNT`/`CALL` subqueries, `UNION`/`UNION ALL`, and the vector and full-text query procedures, with the same typing and the same core AST as the builder.
+`cypher%` SHALL accept variable-length and shortest-path patterns, `EXISTS`/`COUNT` subqueries, `UNION`/`UNION ALL`, and the vector and full-text query procedures, with the same typing and the same core AST as the builder.
 
 #### Scenario: Variable-length in syntax
 - **WHEN** `cypher% MATCH (a:Person)-[:Knows*1..2]->(b:Person) WHERE a.id = 1 RETURN b.id` is elaborated and printed

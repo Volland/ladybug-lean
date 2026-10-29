@@ -19,6 +19,7 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 | Typed Cypher | `Ladybug.Cypher.*` | `Ladybug` | M2, M3, M5 |
 | Graph monad | `Ladybug.Graph`, `LadybugNative.Graph` | both | M2 |
 | ORM | `Ladybug.ORM` (`Repo.*`), `Repo.copyNodes`/`copyRels` in `LadybugNative.Graph` | both | M4 |
+| Paths, subqueries, unions | `Ladybug.Cypher.Advanced` | `Ladybug` | M5 |
 | Search | `Ladybug.Search` | `Ladybug` | M5 |
 | Memory backend | `Ladybug.Mem.*` | `Ladybug` | M6 |
 
@@ -58,6 +59,14 @@ The `Repo` functions are generic over `MonadGraph` and the table classes, so the
 They are `insert`, `upsert`, `get?`, `findAll`, `findWhere`, `update`, `delete`, `detachDelete`, `link`, `between`, `unlink`, `outgoing`, `incoming`, and the batched `insertMany`, `upsertMany` and `linkMany`.
 
 - defines:: [[decisions#Repository not Hibernate]]
+
+## Search and paths
+
+Variable-length and shortest paths bind typed `Path` values, `exists_`/`countSub` build subqueries, and `Query.union` joins queries of one result type.
+
+`vectorSearch`/`ftsSearch` call Ladybug's index procedures, and the native backend loads the extensions they need.
+
+- defines:: [[constraints#Path variables include endpoints]]
 
 ## Pure core
 

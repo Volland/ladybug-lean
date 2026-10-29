@@ -33,6 +33,10 @@ private def binOpText : BinOp → String
   | .add => "+" | .sub => "-" | .mul => "*" | .div => "/" | .mod => "%"
   | .startsWith => "STARTS WITH" | .endsWith => "ENDS WITH" | .contains => "CONTAINS" | .in_ => "IN"
 
+private def strLit (s : String) : String := "'" ++ (s.replace "\\" "\\\\" |>.replace "'" "\\'") ++ "'"
+
+mutual
+
 private partial def expr : Expr → PrintM String
   | .var n => return quoteIdent n
   | .prop e k => return (← expr e) ++ "." ++ quoteIdent k
@@ -47,6 +51,42 @@ private partial def expr : Expr → PrintM String
   | .call fn args distinct =>
     return fn ++ "(" ++ (if distinct then "DISTINCT " else "") ++ ", ".intercalate (← args.mapM expr) ++ ")"
   | .countStar => return "count(*)"
+  | .exists pats cond => return s!"EXISTS \{ {← subquery pats cond} }"
+  | .countSub pats cond => return s!"COUNT \{ {← subquery pats cond} }"
+  | .name s => return strLit s
+
+private partial def subquery (pats : List Pattern) (cond : Option Expr) : PrintM String := do
+  let m := "MATCH " ++ ", ".intercalate (← pats.mapM pattern)
+  match cond with
+  | some c => return s!"{m} WHERE {← expr c}"
+  | none => return m
+
+private partial def props (ps : List (String × Expr)) : PrintM String := do
+  if ps.isEmpty then return ""
+  let fs ← ps.mapM fun (k, v) => return s!"{quoteIdent k}: {← expr v}"
+  return " {" ++ ", ".intercalate fs ++ "}"
+
+private partial def nodePat (n : NodePat) : PrintM String := do
+  let label := n.label.map (":" ++ quoteIdent ·) |>.getD ""
+  return s!"({quoteIdent n.var}{label}{← props n.props})"
+
+private partial def relBody (r : RelPat) (range : String) : PrintM String := do
+  let var := r.var.map quoteIdent |>.getD ""
+  return s!"[{var}:{quoteIdent r.label}{range}{← props r.props}]"
+
+private partial def arrow (dir : Dir) (body : String) : String :=
+  match dir with
+  | .out => s!"-{body}->"
+  | .inc => s!"<-{body}-"
+  | .both => s!"-{body}-"
+
+private partial def pattern (p : Pattern) : PrintM String := do
+  let mut s ← nodePat p.start
+  for (r, n) in p.steps do
+    s := s ++ arrow r.dir (← relBody r "") ++ (← nodePat n)
+  return s
+
+end
 
 /-- Print a top-level expression without its outermost parentheses. -/
 private def topExpr (e : Expr) : PrintM String := do
@@ -66,29 +106,6 @@ where
         depth := depth - 1
         if depth == 0 && i + 1 < cs.length then return false
     return true
-
-private def props (ps : List (String × Expr)) : PrintM String := do
-  if ps.isEmpty then return ""
-  let fs ← ps.mapM fun (k, v) => return s!"{quoteIdent k}: {← expr v}"
-  return " {" ++ ", ".intercalate fs ++ "}"
-
-private def nodePat (n : NodePat) : PrintM String := do
-  let label := n.label.map (":" ++ quoteIdent ·) |>.getD ""
-  return s!"({quoteIdent n.var}{label}{← props n.props})"
-
-private def relPat (r : RelPat) : PrintM String := do
-  let var := r.var.map quoteIdent |>.getD ""
-  let body := s!"[{var}:{quoteIdent r.label}{← props r.props}]"
-  return match r.dir with
-    | .out => s!"-{body}->"
-    | .inc => s!"<-{body}-"
-    | .both => s!"-{body}-"
-
-private def pattern (p : Pattern) : PrintM String := do
-  let mut s ← nodePat p.start
-  for (r, n) in p.steps do
-    s := s ++ (← relPat r) ++ (← nodePat n)
-  return s
 
 private def items (is : List Item) : PrintM String := do
   let parts ← is.mapM fun i => do
@@ -119,6 +136,19 @@ private def clause : Clause → PrintM String
     let parts ← is.mapM fun i => return s!"{← expr i.target} = {← topExpr i.value}"
     return "SET " ++ ", ".intercalate parts
   | .delete detach ts => return (if detach then "DETACH DELETE " else "DELETE ") ++ ", ".intercalate (← ts.mapM expr)
+  | .matchPath opt pv src rel lo hi mode dst => do
+    let modeText := match mode with
+      | .all => "" | .shortest => " SHORTEST" | .allShortest => " ALL SHORTEST"
+    let body ← relBody rel s!"*{modeText} {lo}..{hi}"
+    let body := if mode == .all then body.replace s!"* {lo}" s!"*{lo}" else body
+    return (if opt then "OPTIONAL MATCH " else "MATCH ") ++ s!"{quoteIdent pv} = {← nodePat src}{arrow rel.dir body}{← nodePat dst}"
+  | .call proc args named yields => do
+    let pos ← args.mapM expr
+    let nam ← named.mapM fun (k, v) => return s!"{k} := {← expr v}"
+    let ys := yields.map fun (o, a) => s!"{o} AS {quoteIdent a}"
+    let y := if ys.isEmpty then "" else " YIELD " ++ ", ".intercalate ys
+    return s!"CALL {proc}(" ++ ", ".intercalate (pos ++ nam) ++ ")" ++ y
+  | .union all => return if all then "UNION ALL" else "UNION"
 
 -- @tg: implements:: [[openspec:cypher-query#Printing]]
 /-- Cypher text and parameters for a query. A WHERE that does not follow a
