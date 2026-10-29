@@ -23,7 +23,7 @@ The shim loads the library with `dlopen` (Unix, `RTLD_GLOBAL` so Ladybug's exten
 | Linux x86_64 / aarch64 | `liblbug-linux-<arch>.tar.gz` | `liblbug.so` |
 | Windows x86_64 / arm64 | `liblbug-windows-<arch>.zip` | `lbug_shared.dll` |
 
-`tar -xf` unpacks both archive kinds (bsdtar on macOS and Windows). On Windows the shim is compiled with Lean's bundled clang, since there is no system `cc`, and without `-fPIC`.
+`tar -xf` unpacks both archive kinds (bsdtar on macOS and Windows). On Windows the shim is compiled with MinGW-w64 `gcc` (UCRT64 in CI), without `-fPIC`: Lean's bundled clang has no C library headers there, and `lbug.h` includes `<windows.h>`. `CC` overrides the compiler.
 
 ### CI
 GitHub Actions matrix on `macos-14`, `ubuntu-latest` and `windows-latest`. `leanprover/lean-action` installs elan from `lean-toolchain` and runs `lake build` and `lake test`; `.lake/lbug` is cached by lock-file hash; the build-level checks run on macOS and Linux.

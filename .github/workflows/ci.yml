@@ -21,6 +21,20 @@ jobs:
           path: .lake/lbug
           key: lbug-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lbug.lock') }}
 
+      # The C shim needs a MinGW-w64 compiler with C library headers on Windows.
+      - name: Install MinGW-w64 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc
+          path-type: inherit
+
+      - name: Put MinGW-w64 on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cygpath -w /ucrt64/bin >> "$GITHUB_PATH"
+
       # Installs elan and the toolchain from lean-toolchain.
       - uses: leanprover/lean-action@v1
         with:

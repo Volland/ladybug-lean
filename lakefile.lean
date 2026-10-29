@@ -52,11 +52,9 @@ target lbugDir pkg : FilePath := Job.async do
 -- @tg: implements:: [[openspec:native-library#Executables find the library at runtime]]
 target lbugShim.o pkg : FilePath := do
   let leanInc ← getLeanIncludeDir
-  -- Windows has no system `cc`; Lean's bundled clang targets its MinGW ABI there.
-  let cc ← if System.Platform.isWindows then getLeanCc else pure "cc"
-  -- Lean's clang finds its C headers only through Lean's own compiler flags.
-  let lean ← getLeanInstall
-  let leanFlags := if System.Platform.isWindows then lean.ccFlags else #[]
+  -- `CC` overrides the C compiler. Windows needs MinGW-w64 gcc: Lean's bundled
+  -- clang has no C library headers there, and `lbug.h` includes <windows.h>.
+  let cc := (← IO.getEnv "CC").getD (if System.Platform.isWindows then "gcc" else "cc")
   let pic := if System.Platform.isWindows then #[] else #["-fPIC"]
   let src ← inputTextFile (pkg.dir / "c" / "lbug_shim.c")
   (← lbugDir.fetch).bindM fun dir => do
@@ -64,7 +62,7 @@ target lbugShim.o pkg : FilePath := do
     let hdr ← inputTextFile (dir / "lbug.h")
     hdr.bindM fun _ =>
       buildO (pkg.buildDir / "c" / "lbug_shim.o") src
-        (#["-I", leanInc.toString, "-I", dir.toString, "-I", (pkg.dir / "c").toString] ++ leanFlags)
+        #["-I", leanInc.toString, "-I", dir.toString, "-I", (pkg.dir / "c").toString]
         (pic ++ #["-O2", "-Wall", s!"-DLBUG_LIB_PATH=\"{lib}\""]) cc
         (extraDepTrace := computeTrace (dir / "lbug.h"))
 

@@ -59,7 +59,7 @@ The first build downloads the official Ladybug library for your platform (macOS,
 - `LBUG_LIB_DIR=/path/to/dir` builds against a local Ladybug build instead of downloading one; the directory needs `lbug.h` and the shared library.
 - `LBUG_LIBRARY=/path/to/liblbug.so` overrides the library file at runtime.
 
-Toolchain: Lean `v4.35.0`.
+Toolchain: Lean `v4.35.0`. Building the C shim needs a C compiler: the system `cc` on macOS and Linux, MinGW-w64 `gcc` on Windows (for example from MSYS2's UCRT64 environment); `CC` overrides it.
 
 ## Libraries
 
