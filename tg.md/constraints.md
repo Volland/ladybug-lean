@@ -159,3 +159,19 @@ In Ladybug a path variable `p = (a)-[:R*1..3]->(b)` holds every node on the path
 source:: observed with Ladybug 0.22.1
 
 - constrains:: [[decisions#Phantom types over an untyped core]] {strength: must, note: "variable-length matches bind a path variable"}
+
+## Ladybug semantics the evaluator copies
+
+Ladybug sorts NULL as the largest value, evaluates `x IN [.., NULL]` to false rather than unknown, truncates integer `/` and `%` toward zero, and errors on division by zero and INT64 overflow.
+
+source:: observed with Ladybug 0.22.1; pinned by `Tests/Memory.lean` (pinnedBehaviour)
+
+- constrains:: [[decisions#Two backends one API]] {strength: must}
+
+## Ladybug path semantics
+
+Variable-length patterns use walk semantics (relationships may repeat), an undirected pattern matches a self-loop once per direction, and shortest paths never return to their start node.
+
+source:: observed with Ladybug 0.22.1; found by the differential suite and pinned by `Tests/Memory.lean`
+
+- constrains:: [[decisions#Two backends one API]] {strength: must}

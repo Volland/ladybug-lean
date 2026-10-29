@@ -21,7 +21,7 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 | ORM | `Ladybug.ORM` (`Repo.*`), `Repo.copyNodes`/`copyRels` in `LadybugNative.Graph` | both | M4 |
 | Paths, subqueries, unions | `Ladybug.Cypher.Advanced` | `Ladybug` | M5 |
 | Search | `Ladybug.Search` | `Ladybug` | M5 |
-| Memory backend | `Ladybug.Mem.*` | `Ladybug` | M6 |
+| Memory backend | `Ladybug.Mem.Graph`, `Ladybug.Mem.Eval`, `Ladybug.Mem` (`MemM`) | `Ladybug` | M6 |
 
 - defines:: [[decisions#Two backends one API]]
 
@@ -67,6 +67,14 @@ Variable-length and shortest paths bind typed `Path` values, `exists_`/`countSub
 `vectorSearch`/`ftsSearch` call Ladybug's index procedures, and the native backend loads the extensions they need.
 
 - defines:: [[constraints#Path variables include endpoints]]
+
+## Memory backend
+
+`MemM` keeps the database in a pure `Graph` value and interprets the core AST with Ladybug's semantics, so programs written against `MonadGraph` run in `#eval`.
+
+`Tests/Differential.lean` compares it with Ladybug on generated cases.
+
+- defines:: [[decisions#Differential testing against Ladybug]]
 
 ## Pure core
 

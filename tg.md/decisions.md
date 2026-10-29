@@ -178,6 +178,16 @@ The first `cypher%` clause may start anywhere, on the same line or the next, and
 status:: accepted
 date:: 2026-10-29
 
+## Differential testing against Ladybug
+
+The in-memory evaluator is checked against Ladybug on generated graphs and queries, with counterexamples shrunk by removing nodes and relationships. It found the self-loop and shortest-path semantics that the evaluator now follows.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[decisions#Two backends one API]]
+- motivated_by:: [[constraints#Ladybug path semantics]]
+
 ## Spec first then vertical slices
 
 All seven milestones are specified as OpenSpec changes before any code, then implemented and archived in order: native binding, typed core, syntax, ORM, advanced Cypher, memory backend, platform support.

@@ -21,6 +21,6 @@ None.
 
 ## Impact
 
-- New modules: `Ladybug/Mem/Graph.lean`, `Ladybug/Mem/Eval.lean`, `Ladybug/Mem/Search.lean`, `Ladybug/Mem.lean`; tests `Tests/Differential.lean` with generators.
+- New modules: `Ladybug/Mem/Graph.lean`, `Ladybug/Mem/Eval.lean`, `Ladybug/Mem.lean`; tests `Tests/Memory.lean`, `Tests/MemEval.lean` and `Tests/Differential.lean` with generators.
 - Depends on [[openspec:graph-monad#Backend-independent execution]] and the core AST of [[openspec:cypher-query#Query builder]], [[openspec:cypher-query#Subqueries]] and [[openspec:graph-search#Vector index]].
 - Requirements added: [[openspec:memory-backend#Pure graph state]], [[openspec:memory-backend#Full AST evaluation]], [[openspec:memory-backend#Schema enforcement in memory]], [[openspec:memory-backend#Snapshot transactions]], [[openspec:memory-backend#Differential conformance]].

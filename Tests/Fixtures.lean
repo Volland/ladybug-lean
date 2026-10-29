@@ -10,12 +10,12 @@ structure Person where
   id : Int64
   name : String
   age : Option Int64
-  deriving BEq, Repr
+  deriving BEq, Repr, Inhabited
 
 structure Company where
   name : String
   founded : Int32
-  deriving BEq, Repr
+  deriving BEq, Repr, Inhabited
 
 structure WorksAt where
   since : Int64

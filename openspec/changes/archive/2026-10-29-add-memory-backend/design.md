@@ -19,19 +19,19 @@ The core AST is untyped and every value is a `Value` ([[decisions#Phantom types 
 Evaluation is a fold over clauses on `Array Env`, where `Env` maps variable names to `Value`. MATCH extends each env with every binding of the pattern, OPTIONAL MATCH extends with NULLs when there are none, WHERE filters on `== some true`, WITH and RETURN project, and aggregates group by the non-aggregate projections. This is the textbook semantics of Cypher's driving table, and it makes each clause one small function.
 
 ### Termination
-Pattern matching enumerates edges in bounded depth (upper bounds are mandatory), subqueries recurse on structurally smaller ASTs, and UNWIND iterates over finite lists, so `eval` is structurally recursive with no `partial`.
+Pattern matching enumerates walks up to a mandatory upper bound over a finite graph, subqueries recurse on structurally smaller ASTs, UNWIND iterates over finite lists, and clause evaluation folds over a finite clause array, so every evaluation terminates. The mutually recursive evaluator is written with `partial` for clarity; termination is argued here rather than checked by Lean.
 
 ### NULL ordering and comparison semantics follow Ladybug, tested
 Where openCypher leaves behaviour to the implementation (NULL position in ORDER BY, comparing values of different types, integer overflow), the evaluator copies Ladybug's observed behaviour. Each such rule is pinned by a native test so a Ladybug upgrade that changes it is detected.
 
 ### Full-text scoring
-BM25 with k1 = 1.2 and b = 0.75 over a tokenizer that lowercases and splits on non-alphanumerics, with Ladybug's default English stopword list and a Porter stemmer. Conformance compares the matched sets and their order only.
+BM25 with k1 = 1.2 and b = 0.75 over a tokenizer that lowercases and splits on non-alphanumerics, with an English stopword list and a Porter stemmer. Conformance compares the matched sets and their order only. Vector distances are exact (cosine, l2, l2sq, and the negated dot product for `dotproduct`, whose Ladybug definition is not verified).
 
 ### Differential generator
-A seeded generator builds small graphs (at most 8 nodes per table, 3 tables) over a fixed test schema, and queries from a grammar of builder combinators that are well-typed by construction. Shrinking removes clauses and nodes until the disagreement disappears, then reports the last failing case.
+A seeded generator builds small graphs (up to 7 persons, 3 companies and their relationships) over the test schema, and queries from 14 families of builder combinators that are well-typed by construction: filters with random predicates, joins, optional matches, aggregates, ordered pages, variable-length and shortest paths, subqueries, unions, WITH, arithmetic, DISTINCT and undirected patterns. Shrinking removes relationships and nodes while the disagreement persists, then reports the smallest failing case. A fault flag (`nullCompareTrue`) checks that the suite catches a broken evaluator.
 
 ### Transactions as snapshots
-`MemM := StateT Graph (ExceptT Ladybug.Error Id)` plus a transaction mode flag. `withTx` saves the `Graph`, runs the body, and restores the saved value on error. Since `Graph` is persistent, saving it is O(1).
+`MemM := StateT MemState (Except Ladybug.Error)`, where `MemState` holds the `Graph`, the transaction mode and the fault flags. `withTx` saves the `Graph`, runs the body, and restores the saved value on error. Since `Graph` is persistent, saving it is O(1).
 
 ## Risks / Trade-offs
 
