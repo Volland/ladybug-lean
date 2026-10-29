@@ -15,4 +15,4 @@
 ## 4. Docs and checks
 
 - [x] 4.1 Record the platform decisions in `tg.md/decisions.md` and `tg.md/constraints.md`; update `tg.md/architecture.md`
-- [ ] 4.2 Run `tg check`, `tg ontology check` and `tg trace native-library --gaps` / `tg trace native-connection --gaps` and close every gap
+- [x] 4.2 Run `tg check`, `tg ontology check` and `tg trace native-library --gaps` / `tg trace native-connection --gaps` and close every gap
