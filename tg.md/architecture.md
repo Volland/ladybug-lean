@@ -14,7 +14,7 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 |---|---|---|---|
 | Native library | `lakefile.lean`, `lbug.lock`, `c/lbug_shim.c` | build | M1 |
 | Values and decoding | `Ladybug.Value`, `Ladybug.Error`, `Ladybug.Decode`, `Ladybug.Decode.Derive` | `Ladybug` | M1 |
-| Native API | `LadybugNative.FFI`, `LadybugNative` | `LadybugNative` | M1 |
+| Native API | `LadybugNative.FFI`, `LadybugNative.Connection` | `LadybugNative` | M1 |
 | Schema | `Ladybug.Schema`, `Ladybug.Schema.Command` | `Ladybug` | M2 |
 | Typed Cypher | `Ladybug.Cypher.*` | `Ladybug` | M2, M3, M5 |
 | Graph monad | `Ladybug.Graph`, `LadybugNative.Graph` | both | M2 |
@@ -28,10 +28,19 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 
 The C shim wraps Ladybug's C API in reference-counted external objects whose children keep their parents alive, and copies every result row into a Lean `Value` before advancing the cursor.
 
-`LadybugNative` adds `Database.open`, `Connection.query`/`prepare`, and the `LbugM` monad with `query`, `queryAs`, `exec` and the `withTx`/`withReadTx` brackets (`Ladybug.withTxMode` in `LadybugNative.lean`). Decoding is shared with every backend through `FromValue`/`FromRow` (`Ladybug.FromRow` in `Ladybug/Decode.lean`).
+`LadybugNative.Connection` adds `Database.open`, `Connection.query`/`prepare`, and the `LbugM` monad with `queryRaw`, `queryAs`, `exec` and the `withTx`/`withReadTx` brackets (`Ladybug.withTxMode` in `LadybugNative.lean`). Decoding is shared with every backend through `FromValue`/`FromRow` (`Ladybug.FromRow` in `Ladybug/Decode.lean`).
 
 - defines:: [[decisions#Ownership in C external objects]]
 - defines:: [[decisions#Rows are copied out eagerly]]
+
+## Typed core
+
+Tables are Lean structures declared with `node_table`/`rel_table`, which generate `T.Var` companions whose fields are typed property expressions.
+
+Queries are built in `QueryM` (`match_`, `optMatch`, `where_`, `with_`, `return_`, …) over the untyped core AST, printed with every literal as a parameter, and run through `MonadGraph` (`runQuery`, `runStmt`, `withTx`, `applySchema`, `verifySchema`).
+
+- defines:: [[decisions#Lean structures are the schema]]
+- defines:: [[decisions#Literals typed from the other operand]]
 
 ## Pure core
 

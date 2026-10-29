@@ -93,3 +93,19 @@ source:: Ladybug `Value::toString` for UNION and the C struct accessors
 source:: Ladybug C API `value.cpp` and runtime error "Trying to a create a vector with ANY type"
 
 - constrains:: [[decisions#Values built through exported Lean constructors]] {strength: must, note: "empty lists are sent as INT64[]"}
+
+## Aggregates over no rows are NULL
+
+Ladybug returns NULL for `sum`, `avg`, `min` and `max` over no rows, 0 for `count` and an empty list for `collect`, and `sum` of INT64 values is an INT128.
+
+source:: observed with Ladybug 0.22.1
+
+- constrains:: [[decisions#Full three-valued logic]] {strength: must, note: "sum is typed Option"}
+
+## CREATE takes no property map parameter
+
+Ladybug does not parse `CREATE (n:L $props)`, so a node or relationship created from a Lean value is printed with one parameter per property.
+
+source:: Ladybug 0.22.1 parser error "expected rule oC_SingleQuery"
+
+- constrains:: [[decisions#Phantom types over an untyped core]] {strength: must}

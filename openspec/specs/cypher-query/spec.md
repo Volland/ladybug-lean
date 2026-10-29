@@ -1,8 +1,9 @@
-## Purpose
+# cypher-query Specification
 
+## Purpose
 The typed Cypher query language embedded in Lean: expressions with Cypher's NULL semantics in their types, a monadic builder, a printer, and query result types.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Typed expressions
 Matching a node or relationship table SHALL yield a variable whose properties are reachable by dot notation as expressions typed by the declared field types. Expressions SHALL support comparison, arithmetic, string concatenation and predicates (`STARTS WITH`, `CONTAINS`, `IN`), list literals, and calls to typed scalar functions. Any Lean value embedded in an expression SHALL become a query parameter, never literal text. An ill-typed expression (e.g. comparing a string property with an integer) SHALL be a compile-time error.
@@ -54,7 +55,7 @@ Queries SHALL be built in a monad whose actions append clauses: match a node tab
 - **THEN** after running it, matching `Person` returns that value
 
 ### Requirement: Aggregation
-The language SHALL provide `count`, `countDistinct`, `sum`, `avg`, `min`, `max` and `collect`, and returning a mix of aggregates and plain expressions SHALL group by the plain expressions, as Cypher does. `sum` and `count` of no rows SHALL be 0; `avg`, `min` and `max` of no rows SHALL be NULL and typed as `Option`.
+The language SHALL provide `count`, `countStar`, `countDistinct`, `sum`, `avg`, `min`, `max` and `collect`, and returning a mix of aggregates and plain expressions SHALL group by the plain expressions, as Cypher does. `count` of no rows SHALL be 0 and `collect` of no rows the empty list; `sum`, `avg`, `min` and `max` of no rows SHALL be NULL (as Ladybug returns) and typed as `Option`. `collect` SHALL skip NULLs, so collecting an `Option τ` expression gives an `Array τ`.
 
 #### Scenario: Group by
 - **WHEN** persons are matched with their company and `(c.name, count p)` is returned

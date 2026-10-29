@@ -30,11 +30,11 @@ Alternative rejected: `deriving NodeTable`. Lean's `deriving` clauses take no ar
 - motivated_by:: [[decisions#Lean structures are the schema]]
 
 ### Nullability lifting with one class
-`class Nullable (α : Type) (β : outParam Type)` relates a type to its NULL-lifted form (`Nullable Int64 (Option Int64)`, `Nullable (Option Int64) (Option Int64)`). Binary operators take `Expr α`, `Expr β` and return the lifted result, using `Lift` instances that unify `τ` and `Option τ` operands. Comparisons always return `Expr (Option Bool)`. `where_` takes `Expr (Option Bool)`, and a coercion lifts `Expr Bool` into it.
+`class Compat (α β : Type) (τ ρ : outParam Type)` holds when `α` and `β` are each `τ` or `Option τ`, with `ρ` the NULL-lifted result (`Option τ` if either operand is nullable). Binary operators take `Expr α` and `Expr β`. Comparisons always return `Expr (Option Bool)`, and arithmetic returns `Expr ρ`. Default instances make a literal whose type is still unknown take the other operand's type, so `p.age >. 30` checks `30` as an `Int64` ([[decisions#Literals typed from the other operand]]). `where_` takes either `Expr Bool` or `Expr (Option Bool)` through an `IsPred` class.
 - motivated_by:: [[decisions#Full three-valued logic]]
 
 ### Builder monad
-`QueryM := StateM BuilderState`, where the state holds the clause list, a fresh-name counter and the parameter list. `match_ Person : QueryM Person.Var` appends a clause and returns the companion. `return_ (r : ρ) [Returnable ρ α] : QueryM (Ret α)`. Finally `query : QueryM (Ret α) → Query α`, and `stmt : QueryM Unit → Statement`. `Returnable` instances cover `Expr α`, table companions and tuples. `Query α` stores the core AST together with a `FromRow α` decoder.
+`QueryM := StateM BuilderState`, where the state holds the clause list, a fresh-name counter and the parameter list. `match_ (node Person) : QueryM Person.Var` appends a clause and returns the companion. Relationship patterns are `out p WorksAt (node Company)`, `inc …` and `both …`, whose `Matchable` instances check the endpoints ([[decisions#Pattern functions instead of arrow notation]]). `return_ (r : ρ) [Returnable ρ α] : QueryM (Ret α)`. Finally `query : QueryM (Ret α) → Query α`, and `stmt : QueryM Unit → Statement`. `Returnable` instances cover `Expr α`, table companions and tuples. `Query α` stores the core AST together with a `FromRow α` decoder.
 
 ### Single printer
 `Cypher.Print` renders the core AST. Variables are `n<k>` and `r<k>` in clause order, parameters are `p<k>` in first-use order, and identifiers are backquoted unless they match `[A-Za-z_][A-Za-z0-9_]*`. The printer is pure and is tested with golden strings.

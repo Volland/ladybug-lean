@@ -50,7 +50,7 @@ def compatibleStorage : IO Unit := do
 
 -- @tg: verifies:: [[openspec:native-connection#Open database#In-memory database]] {level: integration}
 def inMemoryDatabase : IO Unit := do
-  let rs ← inMem (query "RETURN 1 AS x")
+  let rs ← inMem (queryRaw "RETURN 1 AS x")
   assertEq rs.columns #["x"] "columns"
   check (rs.rows.size == 1 && rs.rows[0]![0]! == .int64 1) s!"rows: {rs.rows}"
 
@@ -96,7 +96,7 @@ def databaseDroppedFirst : IO Unit := do
 -- @tg: verifies:: [[openspec:native-connection#Handle lifetimes#Many short-lived results]] {level: integration}
 def manyShortLivedResults : IO Unit := inMem do
   for _ in [0:10000] do
-    discard (query "RETURN 1 AS x")
+    discard (queryRaw "RETURN 1 AS x")
 
 /-! ## Run Cypher text -/
 
@@ -148,7 +148,7 @@ def missingParameter : IO Unit := do
 
 -- @tg: verifies:: [[openspec:native-connection#Value model#Round trip of every scalar kind]] {level: integration}
 def everyScalarKind : IO Unit := do
-  let rs ← inMem <| query <| "RETURN true, CAST(-8 AS INT8), CAST(-16 AS INT16), CAST(-32 AS INT32), " ++
+  let rs ← inMem <| queryRaw <| "RETURN true, CAST(-8 AS INT8), CAST(-16 AS INT16), CAST(-32 AS INT32), " ++
     "CAST(-64 AS INT64), CAST(8 AS UINT8), CAST(16 AS UINT16), CAST(32 AS UINT32), CAST(64 AS UINT64), " ++
     "CAST('-170141183460469231731687303715884105728' AS INT128), CAST(1.5 AS FLOAT), CAST(2.25 AS DOUBLE), " ++
     "CAST('3.14' AS DECIMAL(5, 2)), 'text', BLOB('\\\\xAA\\\\xBB'), " ++
@@ -165,7 +165,7 @@ def everyScalarKind : IO Unit := do
   assertEq row.size expected.size "column count"
   for (a, e) in row.zip expected do
     check (a == e) s!"expected {e} ({e.kind}), got {a} ({a.kind})"
-  let nested ← inMem <| query <| "RETURN [1, 2], CAST([1, 2] AS INT64[2]), {x: 1, y: 'z'}, " ++
+  let nested ← inMem <| queryRaw <| "RETURN [1, 2], CAST([1, 2] AS INT64[2]), {x: 1, y: 'z'}, " ++
     "map([1], ['a']), union_value(k := 1), []"
   let expectedNested : Array Value := #[.list #[.int64 1, .int64 2], .array #[.int64 1, .int64 2],
     .struct #[("x", .int64 1), ("y", .string "z")], .map #[(.int64 1, .string "a")],

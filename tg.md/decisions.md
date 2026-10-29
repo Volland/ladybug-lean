@@ -138,6 +138,28 @@ date:: 2026-10-29
 
 - motivated_by:: [[constraints#Lean FFI ownership rules]]
 
+## Literals typed from the other operand
+
+Binary operators take two independently typed operands related by a `Compat` class, and default instances make an untyped literal take the other operand's type, so `p.age >. 30` checks `30` as an `Int64`.
+
+Rejected: homogeneous operands with coercions, which reject a non-nullable operand compared with a nullable one, or lose nullability in arithmetic.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[decisions#Full three-valued logic]]
+
+## Pattern functions instead of arrow notation
+
+Relationship patterns are built with `out p R (node T)`, `inc …` and `both …` rather than `p -[R]-> T` notation, since a `]-` token would change how every importing file lexes `xs[i]-1`.
+
+The `cypher%` syntax gives the arrow form.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[decisions#Hybrid typed DSL]]
+
 ## Spec first then vertical slices
 
 All seven milestones are specified as OpenSpec changes before any code, then implemented and archived in order: native binding, typed core, syntax, ORM, advanced Cypher, memory backend, platform support.
