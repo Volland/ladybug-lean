@@ -16,10 +16,17 @@ def fetchesLockedVersion : IO Unit := do
 
 -- @tg: verifies:: [[openspec:native-library#Executables find the library at runtime#Run built executable directly]] {level: integration}
 def findsLibraryWithoutSearchPath : IO Unit := do
-  for var in ["DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "LD_LIBRARY_PATH"] do
-    if let some v ← IO.getEnv var then
-      if !v.isEmpty then fail s!"{var} is set ({v}); run the test binary directly"
-  assertEq (← inMem (queryAs Int64 "RETURN 7 AS x")) #[7] "query result"
+  let vars := ["DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "LD_LIBRARY_PATH"]
+  let set ← vars.filterM fun v => return ((← IO.getEnv v).getD "").length > 0
+  if set.isEmpty then
+    assertEq (← inMem (queryAs Int64 "RETURN 7 AS x")) #[7] "query result"
+  else
+    -- `lake test` and `lake exe` set library paths; check in a child without them.
+    let out ← IO.Process.output {
+      cmd := (← IO.appPath).toString
+      env := (vars.map (·, none)).toArray.push ("TEST_FILTER", some "no library search path needed") }
+    check (out.exitCode == 0 && (out.stdout.splitOn "1/1 passed").length > 1)
+      s!"without library paths:\n{out.stdout}{out.stderr}"
 
 private def readBytes (path : System.FilePath) : IO ByteArray := IO.FS.readBinFile path
 
