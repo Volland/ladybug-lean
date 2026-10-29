@@ -1,0 +1,6 @@
+.omc/
+.lake/
+/build/
+*.lbug
+*.olean
+.DS_Store
