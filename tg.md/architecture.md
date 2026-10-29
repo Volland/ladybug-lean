@@ -42,6 +42,15 @@ Queries are built in `QueryM` (`match_`, `optMatch`, `where_`, `with_`, `return_
 - defines:: [[decisions#Lean structures are the schema]]
 - defines:: [[decisions#Literals typed from the other operand]]
 
+## Syntax
+
+`cypher%` parses Cypher text with the grammar in `Ladybug.Cypher.Syntax` and translates each clause into the builder call that expresses it (`Ladybug.Cypher.Elab`), so typing and the core AST are the builder's.
+
+Labels and properties are checked against the table registry that `node_table`/`rel_table` fill.
+
+- defines:: [[decisions#Cypher keywords parsed as non-reserved symbols]]
+- defines:: [[decisions#A query ends where its indentation does]]
+
 ## Pure core
 
 The `Ladybug` library has no native dependency: values, decoding, schema, the typed Cypher language, the ORM and the in-memory backend all run in the editor with `#eval`.

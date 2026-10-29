@@ -1,6 +1,7 @@
 import Lean
 import Ladybug.Cypher.Builder
 import Ladybug.Decode.Derive
+import Ladybug.Schema.Registry
 
 /-!
 # Table declarations
@@ -102,6 +103,9 @@ private def companions (declName : Name) (fields : Array FieldInfo) : CommandEla
     mkOpt := fun $vId => $value))
   return (varId, optId)
 
+private def registryColumns (fields : Array FieldInfo) : Array Registry.ColumnEntry :=
+  fields.map fun fi => { name := fi.name.toString, nullable := fi.isOption }
+
 private def columnsTerm (fields : Array FieldInfo) : CommandElabM Term := do
   let cols ← fields.mapM fun fi => `(Ladybug.Column.of $(quote fi.name.toString) $(fi.typeStx))
   `(#[$cols,*])
@@ -126,6 +130,9 @@ def declareNodeTable (declName : Name) (key? : Option Name) (label? : Option Str
     columns := $(← columnsTerm fields)))
   elabCommand (← `(instance : Ladybug.NodeVarOf $varId $S := ⟨(·.cypherVar)⟩))
   elabCommand (← `(instance : Ladybug.OptNodeVarOf $optId $S := ⟨(·.cypherVar)⟩))
+  let entry : Registry.TableEntry :=
+    { label := label, declName := declName, isRel := false, columns := registryColumns fields }
+  liftCoreM <| Registry.register entry
 
 -- @tg: implements:: [[openspec:graph-schema#Relationship table declaration]]
 def declareRelTable (declName src dst : Name) (label? : Option String) : CommandElabM Unit := do
@@ -143,6 +150,16 @@ def declareRelTable (declName src dst : Name) (label? : Option String) : Command
     columns := $(← columnsTerm fields)))
   elabCommand (← `(instance : Ladybug.RelVarOf $varId $R := ⟨(·.cypherVar)⟩))
   elabCommand (← `(instance : Ladybug.OptRelVarOf $optId $R := ⟨(·.cypherVar)⟩))
+  let labelOf (n : Name) : CommandElabM String := do
+    let some e := (Registry.tableExt.getState (← getEnv)).toList.find? (·.2.declName == n)
+      | return n.getString!
+    return e.1
+  let srcLabel ← labelOf src
+  let dstLabel ← labelOf dst
+  let entry : Registry.TableEntry :=
+    { label := label, declName := declName, isRel := true, columns := registryColumns fields,
+      src := some srcLabel, dst := some dstLabel }
+  liftCoreM <| Registry.register entry
 
 syntax tableKeyOpt := "(" &"key" " := " ident ")"
 syntax tableLabelOpt := "(" &"label" " := " str ")"

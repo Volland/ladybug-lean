@@ -109,3 +109,13 @@ Ladybug does not parse `CREATE (n:L $props)`, so a node or relationship created 
 source:: Ladybug 0.22.1 parser error "expected rule oC_SingleQuery"
 
 - constrains:: [[decisions#Phantom types over an untyped core]] {strength: must}
+
+## Trailing parsers of identifiers are indexed under ident
+
+Lean finds the leading parsers of an identifier token by its text only in categories declared with `behavior := symbol` or `both`, and always finds trailing parsers of an identifier token under `ident`.
+
+Keyword operators must therefore list `ident` among their first tokens.
+
+source:: Lean v4.35 `Lean.Parser.indexed` and `trailingLoop`
+
+- constrains:: [[decisions#Cypher keywords parsed as non-reserved symbols]] {strength: must}

@@ -79,6 +79,9 @@ def lit [LitFor β γ] [ToValue γ] (x : γ) : Expr β := ⟨.value (toValue x)�
 
 instance {n : Nat} [LitFor β γ] [OfNat γ n] [ToValue γ] : OfNat (Expr β) n := ⟨lit (OfNat.ofNat n : γ)⟩
 
+instance [LitFor β γ] [OfScientific γ] [ToValue γ] : OfScientific (Expr β) :=
+  ⟨fun m s e => lit (OfScientific.ofScientific m s e : γ)⟩
+
 /-- The NULL literal. -/
 def null : Expr (Option τ) := ⟨.null⟩
 
@@ -119,6 +122,15 @@ def mul [Compat α β τ ρ] [Numeric τ] (a : Expr α) (b : Expr β) : Expr ρ 
 def div [Compat α β τ ρ] [Numeric τ] (a : Expr α) (b : Expr β) : Expr ρ := bin .div a b
 def mod [Compat α β τ ρ] [Numeric τ] (a : Expr α) (b : Expr β) : Expr ρ := bin .mod a b
 def neg [HasBase α τ] [Numeric τ] (a : Expr α) : Expr α := ⟨.unop .neg a.raw⟩
+
+/-- Types `+` applies to in Cypher: numbers add, strings concatenate. -/
+class Plus (τ : Type) : Prop
+
+instance [Numeric τ] : Plus τ := ⟨⟩
+instance : Plus String := ⟨⟩
+
+/-- Cypher's `+`: `add` for numbers, `concat` for strings. -/
+def plus [Compat α β τ ρ] [Plus τ] (a : Expr α) (b : Expr β) : Expr ρ := bin .add a b
 
 def concat [Compat α β String ρ] (a : Expr α) (b : Expr β) : Expr ρ := bin .add a b
 def startsWith [Compat α β String ρ] (a : Expr α) (b : Expr β) : Expr (Option Bool) := bin .startsWith a b

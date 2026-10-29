@@ -78,6 +78,9 @@ instance (priority := low) [RelVarOf V ρ] : IsVar V := ⟨RelVarOf.varName⟩
 instance (priority := low) [OptNodeVarOf V α] : IsVar V := ⟨OptNodeVarOf.varName⟩
 instance (priority := low) [OptRelVarOf V ρ] : IsVar V := ⟨OptRelVarOf.varName⟩
 
+/-- A table variable as an expression, e.g. for `count(p)`. -/
+def ref [IsVar V] (v : V) : Expr V := ⟨.var (IsVar.varName v)⟩
+
 /-! ## Patterns -/
 
 /-- A node of table `α` to be bound by a pattern. -/

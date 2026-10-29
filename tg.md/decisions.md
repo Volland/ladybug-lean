@@ -160,6 +160,24 @@ date:: 2026-10-29
 
 - motivated_by:: [[decisions#Hybrid typed DSL]]
 
+## Cypher keywords parsed as non-reserved symbols
+
+`cypher%` keywords are non-reserved symbols in upper, lower and capitalized case, and keywords that start a trailing rule (`AND`, `IS`, `IN`) also list `ident` among their first tokens, so no Cypher keyword becomes a reserved Lean token.
+
+Rejected: reserved tokens such as `MATCH` or `]-`, which would change how every importing file lexes.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[constraints#Trailing parsers of identifiers are indexed under ident]] {weight: primary}
+
+## A query ends where its indentation does
+
+The first `cypher%` clause may start anywhere, on the same line or the next, and every later clause must start at or right of its column. Text after the query, such as `return q` in a `do` block, is therefore never read as a clause.
+
+status:: accepted
+date:: 2026-10-29
+
 ## Spec first then vertical slices
 
 All seven milestones are specified as OpenSpec changes before any code, then implemented and archived in order: native binding, typed core, syntax, ORM, advanced Cypher, memory backend, platform support.

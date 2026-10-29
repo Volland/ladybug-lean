@@ -22,10 +22,13 @@ The elaborator does not construct core AST values itself. It translates each cla
 `node_table` and `rel_table` register `label ↦ declaration name` in an environment extension. The elaborator resolves `(:Person)` through it and reports unknown labels with "did you mean" suggestions based on edit distance. Property names resolve against the companion structure's fields.
 
 ### Parameters
-`$ident` resolves to the Lean local `ident`, and `$( term )` to an arbitrary term. Both elaborate to `lit term`. If `$` clashes with Lean's antiquotation in this position, `{ident}` / `{(term)}` is the fallback token; the decision is recorded when it is implemented.
+`$ident` resolves to the Lean local `ident`, and `$( term )` to an arbitrary term. Both elaborate to `lit term`. Lean's parser reads both as antiquotations of the `cypherExpr` category, so the elaborator takes the antiquoted term. No new token such as `$(` is declared, because it would break antiquotations in every importing file.
 
-### Case-insensitive keywords
-Keywords are matched as identifiers and compared case-insensitively, so they don't become reserved Lean tokens (a `match` keyword would break Lean's own `match`).
+### Keywords
+Keywords are non-reserved symbols accepted in upper, lower and capitalized case (`MATCH`, `match`, `Match`), so they don't become reserved Lean tokens (a `match` keyword would break Lean's own `match`). Keywords that start a trailing rule (`AND`, `OR`, `XOR`, `IS`, `IN`, `STARTS`, `ENDS`, `CONTAINS`) also list `ident` among their first tokens, because Lean indexes trailing parsers of identifier tokens under `ident` ([[decisions#Cypher keywords parsed as non-reserved symbols]]). Other casings such as `mAtCh` are not accepted.
+
+### Layout and literals
+The first clause may start on the line of `cypher%` or on the next, and later clauses must start at or right of the first clause's column ([[decisions#A query ends where its indentation does]]). Strings are Lean string literals (`"Ann"`), since `'…'` is Lean's character syntax. A path pattern `(a:A)-[:R]->(b:B)` becomes one builder `match_` per step, as the builder writes it, so it prints as consecutive MATCH clauses. CREATE and MERGE properties must be literals or `$parameters`, and missing nullable properties are `none`.
 
 ## Risks / Trade-offs
 
