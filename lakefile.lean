@@ -3,6 +3,12 @@ open Lake DSL System
 
 package ladybug where
   version := v!"0.1.0"
+  description := "LadybugDB graph database for Lean 4: typed Cypher DSL, cypher% syntax, ORM and an in-memory backend"
+  keywords := #["database", "graph", "cypher", "ffi", "dsl", "orm"]
+  homepage := "https://github.com/Volland/ladybug-lean"
+  license := "MIT"
+  licenseFiles := #["LICENSE"]
+  readmeFile := "README.md"
   leanOptions := #[⟨`autoImplicit, false⟩]
 
 /-! ## Native Ladybug library

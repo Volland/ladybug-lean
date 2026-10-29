@@ -128,3 +128,6 @@ scripts/check-native-library.sh             # download caching, lbug-update, LBU
 
 Intent lives in `tg.md/` (decisions, constraints and architecture, as a typed graph checked with `tg check`) and requirements in `openspec/specs/`; the milestones' changes are archived under `openspec/changes/archive/`.
 
+## License
+
+MIT; see [LICENSE](LICENSE). LadybugDB itself is distributed under its own license by the LadybugDB project.
