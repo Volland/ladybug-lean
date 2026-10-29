@@ -25,14 +25,15 @@ Each handle is a Lean external object whose C payload stores a `lean_object*` re
 The shim walks each flat tuple and converts it to a Lean `Value` tree before advancing the cursor, so no `lbug_value` handle is ever exposed to Lean. Alternative rejected: lazy value handles, which would need a parent pointer per value and break when `get_next` reuses the tuple.
 - motivated_by:: [[constraints#Flat tuple is reused]]
 
-### Conversion happens in C, not through hundreds of externs
-A single C function converts a native value to the Lean `Value` inductive by constructing its constructors directly (`lean_alloc_ctor` with the constructor indices of `Ladybug.Value`). Alternative rejected: one `@[extern]` per getter called from Lean, which costs a boundary crossing per value and duplicates the type switch in Lean. The constructor indices are pinned by a test that decodes one value of every kind.
+### Conversion happens in C, through exported Lean constructors
+A single C function walks a native value and builds the Lean `Value` by calling `@[export]`ed constructor functions (`lean_lbug_mk_int64`, `lean_lbug_mk_node`, …), so the C side never depends on Lean's object layout. Alternatives rejected: one `@[extern]` getter per kind called from Lean, which costs a boundary crossing per value and duplicates the type switch; and allocating Lean constructors directly in C, which hard-codes constructor indices and scalar offsets.
+- motivated_by:: [[decisions#Values built through exported Lean constructors]]
 
 ### Pure core, native edge
 `Ladybug.Value`, `Ladybug.Error` and `Ladybug.Decode` are pure modules with no `@[extern]`, so the in-memory backend and DSL can use them without the native library. Only `Ladybug.FFI` and `Ladybug.Native` depend on the shim, and they live in a separate `lean_lib`. This follows lean-linq's driver split.
 
 ### Version lock, fetched by the lakefile
-`lbug.lock` holds one line, the Ladybug version. The lakefile reads it, and a custom target downloads `liblbug-<platform>.tar.gz` from the GitHub release into `.lake/lbug/<version>/<platform>/` with `curl` and `tar` if that directory is missing. `lake run lbug-update` queries the GitHub latest-release API and rewrites the lock. `LBUG_LIB_DIR` short-circuits the download. Executables are linked with `-L<dir> -llbug -Wl,-rpath,<dir>`. Alternatives rejected: vendoring a header (drifts from the downloaded library, and the `lbug_value_get_blob` signature already changed between 0.11 and 0.22), and building Ladybug from source (very slow first build, needs a C++ toolchain).
+`lbug.lock` holds one line, the Ladybug version. A custom target reads it and downloads `liblbug-<platform>.tar.gz` from the GitHub release into `.lake/lbug/<version>/<platform>/` with `curl` and `tar` if that directory is missing. `lake run lbug-update` queries the GitHub latest-release API and rewrites the lock. `LBUG_LIB_DIR` replaces the download with a copy of a local build in `.lake/lbug/override/`. The library is attached to the `LadybugNative` library as a `moreLinkLibs` `Dynlib`, and the shim as `moreLinkObjs`, so both propagate to every executable that imports it. On macOS the fetch step rewrites the library's install name to its absolute path, because a library's `moreLinkArgs` (and so an rpath) do not reach dependent executables ([[decisions#Absolute install name instead of rpath]]). Alternatives rejected: vendoring a header (drifts from the downloaded library, and the `lbug_value_get_blob` signature already changed between 0.11 and 0.22), and building Ladybug from source (very slow first build, needs a C++ toolchain).
 - motivated_by:: [[decisions#Track the latest Ladybug release]]
 
 ### Errors are values in `ExceptT`
@@ -50,5 +51,7 @@ Ladybug itself refuses to open a database written by another storage version and
 - [Ladybug changes its C API on update] → the shim compiles against the downloaded header, so an incompatible change fails the build loudly, never at runtime; CI builds against the lock file only.
 - [Constructor indices of `Value` drift from the C code] → a single test decodes every kind and fails on mismatch; the C file names each index next to its Lean constructor.
 - [Finalizers run on any thread] → every `lbug_*_destroy` is called from finalizers only, and Ladybug handles are documented thread-safe for destruction.
+- [The interpreter cannot run a native `initialize`] → external classes are registered lazily on the first allocation, and no module runs native code at import time ([[constraints#Interpreter cannot run native initializers]]).
+- [Union tags and empty-list types are not available from the C API] → the tag is empty for multi-member unions, and an empty list parameter is sent as `INT64[]` ([[constraints#Union values hide the active member]], [[constraints#Empty list parameters need an element type]]).
 - [Download needs network on first build] → `LBUG_LIB_DIR` override for offline builds.
 - [Ladybug's mismatch message wording changes] → the recognition is a substring match covered by a test that opens a database file written by an older storage version; if it stops matching, the error degrades to `.open` with the same message.

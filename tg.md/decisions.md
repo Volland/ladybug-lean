@@ -116,6 +116,28 @@ date:: 2026-10-29
 
 - motivated_by:: [[constraints#Flat tuple is reused]] {weight: primary}
 
+## Absolute install name instead of rpath
+
+The fetch step rewrites the downloaded macOS library's install name to its absolute path (then re-signs it ad hoc), so every executable that links it, in this package or a dependent one, loads it without an rpath.
+
+Rejected: rpath link arguments, because a library's `moreLinkArgs` do not reach dependent executables in Lake.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[constraints#External library linking in Lake]] {weight: primary}
+
+## Values built through exported Lean constructors
+
+The C shim builds `Value`s by calling `@[export]`ed Lean constructor functions, and builds native parameters through one extern per kind, so C never depends on the memory layout of a Lean inductive.
+
+Rejected: allocating Lean constructor objects in C, which hard-codes constructor indices and scalar field offsets.
+
+status:: accepted
+date:: 2026-10-29
+
+- motivated_by:: [[constraints#Lean FFI ownership rules]]
+
 ## Spec first then vertical slices
 
 All seven milestones are specified as OpenSpec changes before any code, then implemented and archived in order: native binding, typed core, syntax, ORM, advanced Cypher, memory backend, platform support.

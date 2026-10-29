@@ -13,14 +13,14 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 | Layer | Modules | Library | Milestone |
 |---|---|---|---|
 | Native library | `lakefile.lean`, `lbug.lock`, `c/lbug_shim.c` | build | M1 |
-| Values and decoding | `Ladybug.Value`, `Ladybug.Error`, `Ladybug.Decode` | `LadybugCore` | M1 |
-| Native API | `Ladybug.FFI`, `Ladybug.Native` | `LadybugNative` | M1 |
-| Schema | `Ladybug.Schema`, `Ladybug.Schema.Command` | `LadybugCore` | M2 |
-| Typed Cypher | `Ladybug.Cypher.*` | `LadybugCore` | M2, M3, M5 |
-| Graph monad | `Ladybug.Graph`, `Ladybug.Native.Graph` | both | M2 |
-| ORM | `Ladybug.ORM`, `Ladybug.ORM.Bulk` | `LadybugCore` | M4 |
-| Search | `Ladybug.Search` | `LadybugCore` | M5 |
-| Memory backend | `Ladybug.Mem.*` | `LadybugCore` | M6 |
+| Values and decoding | `Ladybug.Value`, `Ladybug.Error`, `Ladybug.Decode`, `Ladybug.Decode.Derive` | `Ladybug` | M1 |
+| Native API | `LadybugNative.FFI`, `LadybugNative` | `LadybugNative` | M1 |
+| Schema | `Ladybug.Schema`, `Ladybug.Schema.Command` | `Ladybug` | M2 |
+| Typed Cypher | `Ladybug.Cypher.*` | `Ladybug` | M2, M3, M5 |
+| Graph monad | `Ladybug.Graph`, `LadybugNative.Graph` | both | M2 |
+| ORM | `Ladybug.ORM`, `Ladybug.ORM.Bulk` | `Ladybug` | M4 |
+| Search | `Ladybug.Search` | `Ladybug` | M5 |
+| Memory backend | `Ladybug.Mem.*` | `Ladybug` | M6 |
 
 - defines:: [[decisions#Two backends one API]]
 
@@ -28,12 +28,14 @@ From the bottom: native library and C shim, the pure value model, the typed Cyph
 
 The C shim wraps Ladybug's C API in reference-counted external objects whose children keep their parents alive, and copies every result row into a Lean `Value` before advancing the cursor.
 
+`LadybugNative` adds `Database.open`, `Connection.query`/`prepare`, and the `LbugM` monad with `query`, `queryAs`, `exec` and the `withTx`/`withReadTx` brackets (`Ladybug.withTxMode` in `LadybugNative.lean`). Decoding is shared with every backend through `FromValue`/`FromRow` (`Ladybug.FromRow` in `Ladybug/Decode.lean`).
+
 - defines:: [[decisions#Ownership in C external objects]]
 - defines:: [[decisions#Rows are copied out eagerly]]
 
 ## Pure core
 
-`LadybugCore` has no native dependency: values, decoding, schema, the typed Cypher language, the ORM and the in-memory backend all run in the editor with `#eval`.
+The `Ladybug` library has no native dependency: values, decoding, schema, the typed Cypher language, the ORM and the in-memory backend all run in the editor with `#eval`.
 
 - defines:: [[decisions#Phantom types over an untyped core]]
 

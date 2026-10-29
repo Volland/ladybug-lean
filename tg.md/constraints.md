@@ -1,5 +1,6 @@
 ---
 type: Constraint
+openspec: [native-library, native-connection]
 ---
 # Constraints
 
@@ -67,4 +68,28 @@ Lake's `extern_lib` is deprecated in favour of custom targets with `moreLinkObjs
 
 source:: Lake README for v4.35; lean4 `tests/lake/examples/ffi`
 
-- constrains:: [[decisions#Track the latest Ladybug release]] {strength: should, note: "fetched library is linked with -L, -l and rpath"}
+- constrains:: [[decisions#Track the latest Ladybug release]] {strength: should, note: "fetched library is linked through moreLinkLibs"}
+
+## Interpreter cannot run native initializers
+
+When Lean elaborates a module that imports one with `initialize` calling an `@[extern]` function, the interpreter aborts because the native symbol is not loaded. Native setup must therefore happen lazily on first use.
+
+source:: observed with Lean v4.35.0 while building `LadybugNative`
+
+- constrains:: [[decisions#Ownership in C external objects]] {strength: must, note: "external classes are registered on first allocation"}
+
+## Union values hide the active member
+
+A Ladybug union value stores only its active member, and the C API does not say which member of a multi-member union is active, so its tag is known only for single-member unions.
+
+source:: Ladybug `Value::toString` for UNION and the C struct accessors
+
+- constrains:: [[decisions#Rows are copied out eagerly]] {strength: must, note: "union tag is empty when unknown"}
+
+## Empty list parameters need an element type
+
+`lbug_value_create_list` rejects zero elements and Ladybug cannot bind a `LIST(ANY)` parameter, so an empty list parameter must be given a concrete element type.
+
+source:: Ladybug C API `value.cpp` and runtime error "Trying to a create a vector with ANY type"
+
+- constrains:: [[decisions#Values built through exported Lean constructors]] {strength: must, note: "empty lists are sent as INT64[]"}
