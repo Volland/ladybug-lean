@@ -44,4 +44,6 @@ jobs:
 
       - name: Build and test
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci-test.sh

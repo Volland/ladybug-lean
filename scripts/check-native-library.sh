@@ -20,7 +20,9 @@ check_update_resolves_latest() {
   trap 'mv lbug.lock.bak lbug.lock' EXIT
   echo "0.0.1" > lbug.lock
   lake run lbug-update >/dev/null
-  latest=$(curl -fsSL https://api.github.com/repos/LadybugDB/ladybug/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p')
+  auth=""
+  [ -n "${GITHUB_TOKEN:-}" ] && auth="Authorization: Bearer $GITHUB_TOKEN"
+  latest=$(curl -fsSL ${auth:+-H "$auth"} https://api.github.com/repos/LadybugDB/ladybug/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p')
   [ "$(cat lbug.lock)" = "$latest" ] || fail "lbug.lock is $(cat lbug.lock), latest is $latest"
   mv lbug.lock.bak lbug.lock
   trap - EXIT

@@ -88,8 +88,12 @@ lean_exe tests where
 
 /-- Resolve the latest Ladybug release and rewrite `lbug.lock`. -/
 script «lbug-update» do
+  -- GITHUB_TOKEN, when set, avoids the unauthenticated API rate limit.
+  let auth := match ← IO.getEnv "GITHUB_TOKEN" with
+    | some t => if t.isEmpty then #[] else #["-H", s!"Authorization: Bearer {t}"]
+    | none => #[]
   let out ← IO.Process.output {
-    cmd := "curl", args := #["-fsSL", "https://api.github.com/repos/LadybugDB/ladybug/releases/latest"] }
+    cmd := "curl", args := #["-fsSL"] ++ auth ++ #["https://api.github.com/repos/LadybugDB/ladybug/releases/latest"] }
   if out.exitCode != 0 then
     IO.eprintln s!"cannot query GitHub releases: {out.stderr}"
     return 1
